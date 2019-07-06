@@ -1,15 +1,12 @@
-var should = require('should'),
+const should = require('should'),
     sinon = require('sinon'),
-    rewire = require('rewire'),
     path = require('path'),
-    Promise = require('bluebird'),
-
-    ampController = rewire('../../../../server/apps/amp/lib/router'),
+    ampController = require('../../../../frontend/apps/amp/lib/router'),
+    urlService = require('../../../../frontend/services/url'),
+    helpers = require('../../../../frontend/services/routing/helpers'),
     common = require('../../../../server/lib/common'),
-    configUtils = require('../../../utils/configUtils'),
-    themes = require('../../../../server/services/themes'),
-
-    sandbox = sinon.sandbox.create();
+    testUtils = require('../../../utils'),
+    configUtils = require('../../../utils/configUtils');
 
 // Helper function to prevent unit tests
 // from failing via timeout when they
@@ -20,22 +17,21 @@ function failTest(done) {
     };
 }
 
-describe('AMP Controller', function () {
-    var res,
+describe('Unit - apps/amp/lib/router', function () {
+    let res,
         req,
         defaultPath,
-        hasTemplateStub;
+        rendererStub;
 
     beforeEach(function () {
-        hasTemplateStub = sandbox.stub().returns(false);
-        hasTemplateStub.withArgs('index').returns(true);
+        rendererStub = sinon.stub();
 
-        sandbox.stub(themes, 'getActive').returns({
-            hasTemplate: hasTemplateStub
+        sinon.stub(helpers, 'renderer').get(function () {
+            return rendererStub;
         });
 
         res = {
-            render: sandbox.spy(),
+            render: sinon.spy(),
             locals: {
                 context: ['amp', 'post']
             }
@@ -53,148 +49,118 @@ describe('AMP Controller', function () {
             }
         };
 
-        defaultPath = path.join(configUtils.config.get('paths').appRoot, '/core/server/apps/amp/lib/views/amp.hbs');
-
-        configUtils.set({
-            theme: {
-                permalinks: '/:slug/',
-                amp: true
-            }
-        });
+        defaultPath = path.join(configUtils.config.get('paths').appRoot, '/core/frontend/apps/amp/lib/views/amp.hbs');
     });
 
     afterEach(function () {
-        sandbox.restore();
-        configUtils.restore();
+        sinon.restore();
     });
 
-    it('should render default amp page when theme has no amp template', function (done) {
-        res.render = function (view, data) {
-            view.should.eql(defaultPath);
-            data.should.eql({post: {title: 'test'}});
-            done();
-        };
+    describe('fn: renderer', function () {
+        it('should render default amp page when theme has no amp template', function (done) {
+            helpers.renderer.callsFake(function (req, res, data) {
+                res.routerOptions.defaultTemplate.should.eql(defaultPath);
+                data.should.eql({post: {title: 'test'}});
+                done();
+            });
 
-        ampController.renderer(req, res, failTest(done));
-    });
-
-    it('should render theme amp page when theme has amp template', function (done) {
-        hasTemplateStub.withArgs('amp').returns(true);
-
-        res.render = function (view, data) {
-            view.should.eql('amp');
-            data.should.eql({post: {title: 'test'}});
-            done();
-        };
-
-        ampController.renderer(req, res, failTest(done));
-    });
-
-    it('throws 404 when req.body has no post', function (done) {
-        req.body = {};
-
-        ampController.renderer(req, res, function (err) {
-            should.exist(err);
-            should.exist(err.message);
-            should.exist(err.statusCode);
-            should.exist(err.errorType);
-            err.message.should.be.eql('Page not found');
-            err.statusCode.should.be.eql(404);
-            err.errorType.should.be.eql('NotFoundError');
-            done();
+            ampController.renderer(req, res, failTest(done));
         });
-    });
 
-    it('throws 404 when req.body.post is a page', function (done) {
-        req.body = {
-            post: {
-                page: true
-            }
-        };
+        it('throws 404 when req.body has no post', function (done) {
+            req.body = {};
 
-        ampController.renderer(req, res, function (err) {
-            should.exist(err);
-            should.exist(err.message);
-            should.exist(err.statusCode);
-            should.exist(err.errorType);
-            err.message.should.be.eql('Page not found');
-            err.statusCode.should.be.eql(404);
-            err.errorType.should.be.eql('NotFoundError');
-            done();
+            ampController.renderer(req, res, function (err) {
+                (err instanceof common.errors.NotFoundError).should.be.true();
+                helpers.renderer.called.should.be.false();
+                done();
+            });
         });
-    });
-});
 
-describe('AMP getPostData', function () {
-    var res, req, postLookupStub, resetPostLookup, next;
-
-    beforeEach(function () {
-        res = {
-            locals: {
-                relativeUrl: '/welcome/amp/'
-            }
-        };
-
-        req = {
-            amp: {
-                post: {}
-            }
-        };
-
-        next = function () {
-        };
-
-        postLookupStub = sandbox.stub();
-        resetPostLookup = ampController.__set__('postLookup', postLookupStub);
-    });
-
-    afterEach(function () {
-        sandbox.restore();
-        resetPostLookup();
-    });
-
-    it('should successfully get the post data from slug', function (done) {
-        postLookupStub.returns(new Promise.resolve({
-            post: {
-                id: '1',
-                slug: 'welcome'
-            }
-        }));
-
-        ampController.getPostData(req, res, function () {
-            req.body.post.should.be.eql({
-                    id: '1',
-                    slug: 'welcome'
+        it('throws 404 when req.body.post is a page', function (done) {
+            req.body = {
+                post: {
+                    page: true
                 }
-            );
-            done();
+            };
+
+            ampController.renderer(req, res, function (err) {
+                (err instanceof common.errors.NotFoundError).should.be.true();
+                helpers.renderer.called.should.be.false();
+                done();
+            });
         });
     });
 
-    it('should return error if postlookup returns NotFoundError', function (done) {
-        postLookupStub.returns(new Promise.reject(new common.errors.NotFoundError({message: 'not found'})));
+    describe('fn: getPostData', function () {
+        let res, req, entryLookupStub, post;
 
-        ampController.getPostData(req, res, function (err) {
-            should.exist(err);
-            should.exist(err.message);
-            should.exist(err.statusCode);
-            should.exist(err.errorType);
-            err.message.should.be.eql('not found');
-            err.statusCode.should.be.eql(404);
-            err.errorType.should.be.eql('NotFoundError');
-            req.body.should.be.eql({});
-            done();
+        beforeEach(function () {
+            post = testUtils.DataGenerator.forKnex.createPost({slug: 'welcome'});
+
+            res = {
+                locals: {}
+            };
+
+            req = {};
+
+            entryLookupStub = sinon.stub();
+
+            sinon.stub(helpers, 'entryLookup').get(function () {
+                return entryLookupStub;
+            });
+
+            sinon.stub(urlService, 'getPermalinkByUrl');
         });
-    });
 
-    it('should return error and if postlookup returns error', function (done) {
-        postLookupStub.returns(new Promise.reject('not found'));
+        afterEach(function () {
+            sinon.restore();
+        });
 
-        ampController.getPostData(req, res, function (err) {
-            should.exist(err);
-            err.should.be.eql('not found');
-            req.body.should.be.eql({});
-            done();
+        it('should successfully get the post data from slug', function (done) {
+            res.locals.relativeUrl = req.originalUrl = '/welcome/amp';
+
+            urlService.getPermalinkByUrl.withArgs('/welcome/').returns('/:slug/');
+
+            helpers.entryLookup.withArgs('/welcome/', {permalinks: '/:slug/', query: {controller: 'postsPublic', resource: 'posts'}})
+                .resolves({
+                    entry: post
+                });
+
+            ampController.getPostData(req, res, function () {
+                req.body.post.should.be.eql(post);
+                done();
+            });
+        });
+
+        it('subdirectory: should successfully get the post data from slug', function (done) {
+            req.originalUrl = '/blog/welcome/amp';
+            res.locals.relativeUrl = '/welcome/amp';
+
+            urlService.getPermalinkByUrl.withArgs('/welcome/').returns('/:slug/');
+
+            helpers.entryLookup.withArgs('/welcome/', {permalinks: '/:slug/', query: {controller: 'postsPublic', resource: 'posts'}}).resolves({
+                entry: post
+            });
+
+            ampController.getPostData(req, res, function () {
+                req.body.post.should.be.eql(post);
+                done();
+            });
+        });
+
+        it('should return error if entrylookup returns NotFoundError', function (done) {
+            res.locals.relativeUrl = req.originalUrl = '/welcome/amp';
+
+            urlService.getPermalinkByUrl.withArgs('/welcome/').returns('/:slug/');
+
+            helpers.entryLookup.withArgs('/welcome/', {permalinks: '/:slug/', query: {controller: 'postsPublic', resource: 'posts'}})
+                .rejects(new common.errors.NotFoundError());
+
+            ampController.getPostData(req, res, function (err) {
+                (err instanceof common.errors.NotFoundError).should.be.true();
+                done();
+            });
         });
     });
 });

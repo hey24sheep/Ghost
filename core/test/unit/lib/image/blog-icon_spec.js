@@ -1,80 +1,72 @@
-// jshint unused: false
 var should = require('should'),
     sinon = require('sinon'),
     _ = require('lodash'),
     path = require('path'),
     rewire = require('rewire'),
     settingsCache = require('../../../../server/services/settings/cache'),
-    configUtils = require('../../../utils/configUtils'),
-    testUtils = require('../../../utils'),
-    config = configUtils.config,
+    storageUtils = require('../../../../server/adapters/storage/utils'),
+    urlUtils = require('../../../utils/urlUtils'),
 
     // stuff we are testing
-    blogIcon = rewire('../../../../server/lib/image/blog-icon'),
-
-    sandbox = sinon.sandbox.create();
+    blogIcon = rewire('../../../../server/lib/image/blog-icon');
 
 describe('lib/image: blog icon', function () {
-    before(function () {
-        configUtils.restore();
-    });
-
     afterEach(function () {
-        configUtils.restore();
-        sandbox.restore();
+        sinon.restore();
         rewire('../../../../server/lib/image/blog-icon');
     });
 
     describe('getIconUrl', function () {
         it('custom uploaded ico blog icon', function () {
-            sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
+            sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
             blogIcon.getIconUrl().should.eql('/favicon.ico');
         });
 
         it('custom uploaded png blog icon', function () {
-            sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
+            sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
             blogIcon.getIconUrl().should.eql('/favicon.png');
         });
 
         it('default ico blog icon', function () {
             blogIcon.getIconUrl().should.eql('/favicon.ico');
         });
+
         describe('absolute URL', function () {
             it('custom uploaded ico blog icon', function () {
-                configUtils.set({url: 'http://my-ghost-blog.com/'});
-                sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
+                blogIcon.__set__('urlUtils', urlUtils.getInstance({url: 'http://my-ghost-blog.com/'}));
+                sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
                 blogIcon.getIconUrl(true).should.eql('http://my-ghost-blog.com/favicon.ico');
             });
 
             it('custom uploaded png blog icon', function () {
-                configUtils.set({url: 'http://my-ghost-blog.com/'});
-                sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
+                blogIcon.__set__('urlUtils', urlUtils.getInstance({url: 'http://my-ghost-blog.com/'}));
+                sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
                 blogIcon.getIconUrl(true).should.eql('http://my-ghost-blog.com/favicon.png');
             });
 
             it('default ico blog icon', function () {
-                configUtils.set({url: 'http://my-ghost-blog.com/'});
+                blogIcon.__set__('urlUtils', urlUtils.getInstance({url: 'http://my-ghost-blog.com/'}));
                 blogIcon.getIconUrl(true).should.eql('http://my-ghost-blog.com/favicon.ico');
             });
         });
 
         describe('with subdirectory', function () {
             it('custom uploaded ico blog icon', function () {
-                sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
-                configUtils.set({url: 'http://my-ghost-blog.com/blog'});
+                sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
+                blogIcon.__set__('urlUtils', urlUtils.getInstance({url: 'http://my-ghost-blog.com/blog'}));
 
                 blogIcon.getIconUrl().should.eql('/blog/favicon.ico');
             });
 
             it('custom uploaded png blog icon', function () {
-                sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
-                configUtils.set({url: 'http://my-ghost-blog.com/blog'});
+                sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
+                blogIcon.__set__('urlUtils', urlUtils.getInstance({url: 'http://my-ghost-blog.com/blog'}));
 
                 blogIcon.getIconUrl().should.eql('/blog/favicon.png');
             });
 
             it('default ico blog icon', function () {
-                configUtils.set({url: 'http://my-ghost-blog.com/blog'});
+                blogIcon.__set__('urlUtils', urlUtils.getInstance({url: 'http://my-ghost-blog.com/blog'}));
                 blogIcon.getIconUrl().should.eql('/blog/favicon.ico');
             });
         });
@@ -82,38 +74,23 @@ describe('lib/image: blog icon', function () {
 
     describe('getIconPath', function () {
         it('custom uploaded ico blog icon', function () {
-            sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
-            blogIcon.getIconPath().should.eql('/2017/04/my-icon.ico');
+            sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.ico');
+            sinon.stub(storageUtils, 'getLocalFileStoragePath');
+            blogIcon.getIconPath();
+
+            storageUtils.getLocalFileStoragePath.calledOnce.should.be.true();
         });
 
         it('custom uploaded png blog icon', function () {
-            sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
-            blogIcon.getIconPath().should.eql('/2017/04/my-icon.png');
+            sinon.stub(settingsCache, 'get').withArgs('icon').returns('/content/images/2017/04/my-icon.png');
+            sinon.stub(storageUtils, 'getLocalFileStoragePath');
+            blogIcon.getIconPath();
+
+            storageUtils.getLocalFileStoragePath.calledOnce.should.be.true();
         });
 
         it('default ico blog icon', function () {
             blogIcon.getIconPath().should.eql(path.join(__dirname, '../../../../server/public/favicon.ico'));
-        });
-
-        describe('with subdirectory', function () {
-            it('custom uploaded ico blog icon', function () {
-                sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/blog/content/images/2017/04/my-icon.ico');
-                configUtils.set({url: 'http://my-ghost-blog.com/blog'});
-
-                blogIcon.getIconPath().should.eql('/2017/04/my-icon.ico');
-            });
-
-            it('custom uploaded png blog icon', function () {
-                sandbox.stub(settingsCache, 'get').withArgs('icon').returns('/blog/content/images/2017/04/my-icon.png');
-                configUtils.set({url: 'http://my-ghost-blog.com/blog'});
-
-                blogIcon.getIconPath().should.eql('/2017/04/my-icon.png');
-            });
-
-            it('default ico blog icon', function () {
-                configUtils.set({url: 'http://my-ghost-blog.com/blog'});
-                blogIcon.getIconPath().should.eql(path.join(__dirname, '../../../../server/public/favicon.ico'));
-            });
         });
     });
 
@@ -175,7 +152,7 @@ describe('lib/image: blog icon', function () {
         });
 
         it('[failure] return error message', function (done) {
-            var sizeOfStub = sandbox.stub();
+            var sizeOfStub = sinon.stub();
 
             sizeOfStub.throws({error: 'image-size could not find dimensions'});
 

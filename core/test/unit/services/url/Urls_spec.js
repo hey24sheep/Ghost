@@ -1,14 +1,10 @@
-'use strict';
-
-// jshint unused: false
 const _ = require('lodash');
 const Promise = require('bluebird');
 const should = require('should');
 const jsonpath = require('jsonpath');
 const sinon = require('sinon');
 const common = require('../../../../server/lib/common');
-const Urls = require('../../../../server/services/url/Urls');
-const sandbox = sinon.sandbox.create();
+const Urls = require('../../../../frontend/services/url/Urls');
 
 describe('Unit: services/url/Urls', function () {
     let urls, eventsToRemember;
@@ -47,13 +43,13 @@ describe('Unit: services/url/Urls', function () {
         });
 
         eventsToRemember = {};
-        sandbox.stub(common.events, 'emit').callsFake(function (eventName, data) {
+        sinon.stub(common.events, 'emit').callsFake(function (eventName, data) {
             eventsToRemember[eventName] = data;
         });
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     it('fn: add', function () {
@@ -95,6 +91,8 @@ describe('Unit: services/url/Urls', function () {
 
     it('fn: getByResourceId', function () {
         urls.getByResourceId('object-id-2').url.should.eql('/something/');
+        should.exist(urls.getByResourceId('object-id-2').generatorId);
+        urls.getByResourceId('object-id-2').generatorId.should.eql(1);
     });
 
     it('fn: getByGeneratorId', function () {

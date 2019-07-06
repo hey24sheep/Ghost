@@ -1,5 +1,3 @@
-'use strict';
-
 const sinon = require('sinon'),
     should = require('should'),
     rewire = require('rewire'),
@@ -7,16 +5,15 @@ const sinon = require('sinon'),
     path = require('path'),
     configUtils = require('../../../utils/configUtils'),
     common = require('../../../../server/lib/common'),
-    loadSettings = rewire('../../../../server/services/settings/loader'),
-    sandbox = sinon.sandbox.create();
+    loadSettings = rewire('../../../../frontend/services/settings/loader');
 
-describe('UNIT > Settings Service:', function () {
+describe('UNIT > Settings Service loader:', function () {
     beforeEach(function () {
         configUtils.set('paths:contentPath', path.join(__dirname, '../../../utils/fixtures/'));
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
         configUtils.restore();
     });
 
@@ -25,28 +22,34 @@ describe('UNIT > Settings Service:', function () {
             routes: null,
             collections: {
                 '/': {
-                    route: '{globals.permalinks}',
+                    permalink: '/{slug}/',
                     template: ['home', 'index']
                 }
             },
-            resources: {tag: '/tag/{slug}/', author: '/author/{slug}/'}
+            taxonomies: {tag: '/tag/{slug}/', author: '/author/{slug}/'}
         };
+
         let yamlParserStub;
+        let validateStub;
 
         beforeEach(function () {
             yamlParserStub = sinon.stub();
+            validateStub = sinon.stub();
         });
 
         it('can find yaml settings file and returns a settings object', function () {
-            const fsReadFileSpy = sandbox.spy(fs, 'readFileSync');
+            const fsReadFileSpy = sinon.spy(fs, 'readFileSync');
             const expectedSettingsFile = path.join(__dirname, '../../../utils/fixtures/settings/goodroutes.yaml');
 
             yamlParserStub.returns(yamlStubFile);
+            validateStub.returns({routes: {}, collections: {}, taxonomies: {}});
+
             loadSettings.__set__('yamlParser', yamlParserStub);
+            loadSettings.__set__('validate', validateStub);
 
             const setting = loadSettings('goodroutes');
             should.exist(setting);
-            setting.should.be.an.Object().with.properties('routes', 'collections', 'resources');
+            setting.should.be.an.Object().with.properties('routes', 'collections', 'taxonomies');
             // There are 4 files in the fixtures folder, but only 1 supported and valid yaml files
             fsReadFileSpy.calledOnce.should.be.true();
             fsReadFileSpy.calledWith(expectedSettingsFile).should.be.true();
@@ -79,7 +82,7 @@ describe('UNIT > Settings Service:', function () {
             fsError.code = 'EPERM';
 
             const originalFn = fs.readFileSync;
-            const fsReadFileStub = sandbox.stub(fs, 'readFileSync').callsFake(function (filePath, options) {
+            const fsReadFileStub = sinon.stub(fs, 'readFileSync').callsFake(function (filePath, options) {
                 if (filePath.match(/routes\.yaml/)) {
                     throw fsError;
                 }

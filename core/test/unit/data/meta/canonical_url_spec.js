@@ -1,70 +1,73 @@
-var should = require('should'), // jshint ignore:line
-    getCanonicalUrl = require('../../../../server/data/meta/canonical_url'),
-    markdownToMobiledoc = require('../../../utils/fixtures/data-generator').markdownToMobiledoc;
+const should = require('should'),
+    sinon = require('sinon'),
+    rewire = require('rewire'),
+    urlUtils = require('../../../../server/lib/url-utils'),
+    testUtils = require('../../../utils');
+
+let getCanonicalUrl = rewire('../../../../frontend/meta/canonical_url');
 
 describe('getCanonicalUrl', function () {
-    it('should return absolute canonical url for post', function () {
-        var canonicalUrl = getCanonicalUrl({
-            url: '/this-is-a-test-post/',
-            html: '<h1>Test 123</h1>',
-            mobiledoc: markdownToMobiledoc('# Test 123'),
-            title: 'This is a test post',
-            slug: 'this-is-a-test-post',
-            secure: true
-        });
-        canonicalUrl.should.not.equal('/this-is-a-test-post/');
-        canonicalUrl.should.match(/\/this-is-a-test-post\/$/);
-        canonicalUrl.should.not.match(/^https:/);
+    let getUrlStub;
+
+    beforeEach(function () {
+        getUrlStub = sinon.stub();
+
+        getCanonicalUrl = rewire('../../../../frontend/meta/canonical_url');
+        getCanonicalUrl.__set__('getUrl', getUrlStub);
+
+        sinon.stub(urlUtils, 'urlJoin');
+        sinon.stub(urlUtils, 'urlFor').withArgs('home', true).returns('http://localhost:9999');
     });
 
-    it('should return absolute canonical url for amp post without /amp/ in url', function () {
-        var canonicalUrl = getCanonicalUrl({
-            url: '/this-is-a-test-post/amp/',
-            html: '<h1>Test 123</h1>',
-            mobiledoc: markdownToMobiledoc('# Test 123'),
-            title: 'This is a test post',
-            slug: 'this-is-a-test-post',
-            secure: true
-        });
-        canonicalUrl.should.not.equal('/this-is-a-test-post/amp/');
-        canonicalUrl.should.match(/\/this-is-a-test-post\/$/);
-        canonicalUrl.should.not.match(/^https:/);
+    afterEach(function () {
+        sinon.restore();
     });
 
-    it('should return absolute canonical url for tag', function () {
-        var canonicalUrl = getCanonicalUrl({
-            parent: null,
-            name: 'testing',
-            slug: 'testing',
-            description: 'We need testing',
-            secure: true
-        });
-        canonicalUrl.should.not.equal('/tag/testing/');
-        canonicalUrl.should.match(/\/tag\/testing\/$/);
-        canonicalUrl.should.not.match(/^https:/);
+    it('should return default canonical url', function () {
+        const post = testUtils.DataGenerator.forKnex.createPost();
+
+        getUrlStub.withArgs(post, false).returns('/post-url/');
+        urlUtils.urlJoin.withArgs('http://localhost:9999', '/post-url/').returns('canonical url');
+
+        getCanonicalUrl(post).should.eql('canonical url');
+
+        urlUtils.urlJoin.calledOnce.should.be.true();
+        urlUtils.urlFor.calledOnce.should.be.true();
+        getUrlStub.calledOnce.should.be.true();
     });
 
-    it('should return absolute canonical url for author', function () {
-        var canonicalUrl = getCanonicalUrl({
-            name: 'Test User',
-            bio: 'This is all about testing',
-            website: 'http://my-testing-site.com',
-            profile_image: null,
-            location: 'Wounderland',
-            slug: 'test-user',
-            secure: true
-        });
-        canonicalUrl.should.not.equal('/author/test-user/');
-        canonicalUrl.should.match(/\/author\/test-user\/$/);
-        canonicalUrl.should.not.match(/^https:/);
+    it('should return canonical url field if present', function () {
+        const post = testUtils.DataGenerator.forKnex.createPost({canonical_url: 'https://example.com/canonical'});
+
+        getCanonicalUrl({
+            context: ['post'],
+            post: post
+        }).should.eql('https://example.com/canonical');
+
+        getUrlStub.called.should.equal(false);
+    });
+
+    it('should return canonical url for amp post without /amp/ in url', function () {
+        const post = testUtils.DataGenerator.forKnex.createPost();
+
+        getUrlStub.withArgs(post, false).returns('/post-url/amp/');
+        urlUtils.urlJoin.withArgs('http://localhost:9999', '/post-url/amp/').returns('*/amp/');
+
+        getCanonicalUrl(post).should.eql('*/');
+
+        urlUtils.urlJoin.calledOnce.should.be.true();
+        urlUtils.urlFor.calledOnce.should.be.true();
+        getUrlStub.calledOnce.should.be.true();
     });
 
     it('should return home if empty secure data', function () {
-        var canonicalUrl = getCanonicalUrl({
-            secure: true
-        });
-        canonicalUrl.should.not.equal('/');
-        canonicalUrl.should.match(/\/$/);
-        canonicalUrl.should.not.match(/^https:/);
+        getUrlStub.withArgs({secure: true}, false).returns('/');
+        urlUtils.urlJoin.withArgs('http://localhost:9999', '/').returns('canonical url');
+
+        getCanonicalUrl({secure: true}).should.eql('canonical url');
+
+        urlUtils.urlJoin.calledOnce.should.be.true();
+        urlUtils.urlFor.calledOnce.should.be.true();
+        getUrlStub.calledOnce.should.be.true();
     });
 });

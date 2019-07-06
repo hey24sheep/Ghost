@@ -1,24 +1,34 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
     Promise = require('bluebird'),
     markdownToMobiledoc = require('../../utils/fixtures/data-generator').markdownToMobiledoc,
 
-    helpers = require('../../../server/helpers'),
+    helpers = require('../../../frontend/helpers'),
     api = require('../../../server/api'),
-    common = require('../../../server/lib/common'),
-
-    sandbox = sinon.sandbox.create();
+    common = require('../../../server/lib/common');
 
 describe('{{next_post}} helper', function () {
+    let locals;
     var browsePostStub;
 
+    beforeEach(function () {
+        locals = {
+            root: {
+                _locals: {
+                    apiVersion: 'v0.1'
+                },
+                context: ['post']
+            }
+        };
+    });
+
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     describe('with valid post data - ', function () {
         beforeEach(function () {
-            browsePostStub = sandbox.stub(api.posts, 'browse').callsFake(function (options) {
+            browsePostStub = sinon.stub(api['v0.1'].posts, 'browse').callsFake(function (options) {
                 if (options.filter.indexOf('published_at:>') > -1) {
                     return Promise.resolve({
                         posts: [{slug: '/next/', title: 'post 3'}]
@@ -30,7 +40,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'if\' template with next post data', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse};
 
             helpers.next_post
                 .call({
@@ -60,7 +70,7 @@ describe('{{next_post}} helper', function () {
 
     describe('for valid post with no next post', function () {
         beforeEach(function () {
-            browsePostStub = sandbox.stub(api.posts, 'browse').callsFake(function (options) {
+            browsePostStub = sinon.stub(api['v0.1'].posts, 'browse').callsFake(function (options) {
                 if (options.filter.indexOf('published_at:>') > -1) {
                     return Promise.resolve({posts: []});
                 }
@@ -70,7 +80,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'else\' template', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse};
 
             helpers.next_post
                 .call({
@@ -98,7 +108,7 @@ describe('{{next_post}} helper', function () {
 
     describe('for invalid post data', function () {
         beforeEach(function () {
-            browsePostStub = sandbox.stub(api.posts, 'browse').callsFake(function (options) {
+            browsePostStub = sinon.stub(api['v0.1'].posts, 'browse').callsFake(function (options) {
                 if (options.filter.indexOf('published_at:>') > -1) {
                     return Promise.resolve({});
                 }
@@ -108,7 +118,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'else\' template', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse};
 
             helpers.next_post
                 .call({}, optionsData)
@@ -125,7 +135,16 @@ describe('{{next_post}} helper', function () {
 
     describe('for page', function () {
         beforeEach(function () {
-            browsePostStub = sandbox.stub(api.posts, 'browse').callsFake(function (options) {
+            locals = {
+                root: {
+                    _locals: {
+                        apiVersion: 'v0.1'
+                    },
+                    context: ['page']
+                }
+            };
+
+            browsePostStub = sinon.stub(api['v0.1'].posts, 'browse').callsFake(function (options) {
                 if (options.filter.indexOf('published_at:>') > -1) {
                     return Promise.resolve({posts: [{slug: '/previous/', title: 'post 1'}]});
                 }
@@ -135,7 +154,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'else\' template', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse};
 
             helpers.next_post
                 .call({
@@ -160,7 +179,16 @@ describe('{{next_post}} helper', function () {
 
     describe('for unpublished post', function () {
         beforeEach(function () {
-            browsePostStub = sandbox.stub(api.posts, 'browse').callsFake(function (options) {
+            locals = {
+                root: {
+                    _locals: {
+                        apiVersion: 'v0.1'
+                    },
+                    context: ['preview', 'post']
+                }
+            };
+
+            browsePostStub = sinon.stub(api['v0.1'].posts, 'browse').callsFake(function (options) {
                 if (options.filter.indexOf('published_at:>') > -1) {
                     return Promise.resolve({posts: [{slug: '/next/', title: 'post 3'}]});
                 }
@@ -170,7 +198,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'else\' template', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse};
 
             helpers.next_post
                 .call({
@@ -194,7 +222,7 @@ describe('{{next_post}} helper', function () {
 
     describe('with "in" option', function () {
         beforeEach(function () {
-            browsePostStub = sandbox.stub(api.posts, 'browse').callsFake(function (options) {
+            browsePostStub = sinon.stub(api['v0.1'].posts, 'browse').callsFake(function (options) {
                 if (options.filter.indexOf('published_at:>') > -1) {
                     return Promise.resolve({
                         posts: [{slug: '/next/', title: 'post 1'}]
@@ -206,7 +234,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'if\' template with prev post data with primary_tag set', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse, hash: {in: 'primary_tag'}};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse, hash: {in: 'primary_tag'}};
 
             helpers.next_post
                 .call({
@@ -238,7 +266,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'if\' template with prev post data with primary_author set', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse, hash: {in: 'primary_author'}};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse, hash: {in: 'primary_author'}};
 
             helpers.next_post
                 .call({
@@ -270,7 +298,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'if\' template with prev post data with author set', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse, hash: {in: 'author'}};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse, hash: {in: 'author'}};
 
             helpers.next_post
                 .call({
@@ -302,7 +330,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'if\' template with prev post data & ignores in author if author isnt present', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse, hash: {in: 'author'}};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse, hash: {in: 'author'}};
 
             helpers.next_post
                 .call({
@@ -333,7 +361,7 @@ describe('{{next_post}} helper', function () {
         it('shows \'if\' template with prev post data & ignores unknown in value', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse, hash: {in: 'magic'}};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse, hash: {in: 'magic'}};
 
             helpers.next_post
                 .call({
@@ -365,7 +393,7 @@ describe('{{next_post}} helper', function () {
 
     describe('general error handling', function () {
         beforeEach(function () {
-            browsePostStub = sandbox.stub(api.posts, 'browse').callsFake(function () {
+            browsePostStub = sinon.stub(api['v0.1'].posts, 'browse').callsFake(function () {
                 return Promise.reject(new common.errors.NotFoundError({message: 'Something wasn\'t found'}));
             });
         });
@@ -373,7 +401,7 @@ describe('{{next_post}} helper', function () {
         it('should handle error from the API', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post', fn: fn, inverse: inverse};
+                optionsData = {name: 'next_post', data: locals, fn: fn, inverse: inverse};
 
             helpers.next_post
                 .call({
@@ -401,7 +429,7 @@ describe('{{next_post}} helper', function () {
         it('should show warning for call without any options', function (done) {
             var fn = sinon.spy(),
                 inverse = sinon.spy(),
-                optionsData = {name: 'next_post'};
+                optionsData = {name: 'next_post', data: {root: {}}};
 
             helpers.next_post
                 .call(

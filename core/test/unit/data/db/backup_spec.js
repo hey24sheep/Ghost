@@ -1,12 +1,11 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
     rewire = require('rewire'),
     _ = require('lodash'),
     fs = require('fs-extra'),
     models = require('../../../../server/models'),
-    exporter = require('../../../../server/data/export'),
-    backupDatabase = rewire('../../../../server/data/db/backup'),
-    sandbox = sinon.sandbox.create();
+    exporter = require('../../../../server/data/exporter'),
+    backupDatabase = rewire('../../../../server/data/db/backup');
 
 describe('Backup', function () {
     var exportStub, filenameStub, fsStub;
@@ -16,13 +15,13 @@ describe('Backup', function () {
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     beforeEach(function () {
-        exportStub = sandbox.stub(exporter, 'doExport').resolves();
-        filenameStub = sandbox.stub(exporter, 'fileName').resolves('test');
-        fsStub = sandbox.stub(fs, 'writeFile').resolves();
+        exportStub = sinon.stub(exporter, 'doExport').resolves();
+        filenameStub = sinon.stub(exporter, 'fileName').resolves('test');
+        fsStub = sinon.stub(fs, 'writeFile').resolves();
     });
 
     it('should create a backup JSON file', function (done) {

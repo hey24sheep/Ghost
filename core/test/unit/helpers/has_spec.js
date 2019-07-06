@@ -1,21 +1,19 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
 
 // Stuff we are testing
-    helpers = require('../../../server/helpers'),
-
-    sandbox = sinon.sandbox.create();
+    helpers = require('../../../frontend/helpers');
 
 describe('{{#has}} helper', function () {
     var fn, inverse, thisCtx, handlebarsOptions;
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     beforeEach(function () {
-        fn = sandbox.spy();
-        inverse = sandbox.spy();
+        fn = sinon.spy();
+        inverse = sinon.spy();
 
         thisCtx = {};
 

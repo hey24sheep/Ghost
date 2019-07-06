@@ -2,7 +2,7 @@
 
 ### routes.yaml
 
-<!-- TODO: make a better description here and link to the docs -->
+To find out more about `routes.yaml` configuration and how to use it visit [documentation](https://docs.ghost.org/api/handlebars-themes/routing/#base-configuration).
 
 This is how the default `routes.yaml` file looks like:
 
@@ -11,12 +11,11 @@ routes:
 
 collections:
   /:
-    route: '{globals.permalinks}'
+    permalink: '/{slug}/'
     template:
-      - home
       - index
 
-resources:
+taxonomies:
   tag: /tag/{slug}/
   author: /author/{slug}/
 ```

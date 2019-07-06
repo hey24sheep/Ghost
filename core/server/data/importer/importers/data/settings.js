@@ -1,11 +1,9 @@
-'use strict';
-
 const debug = require('ghost-ignition').debug('importer:settings'),
     Promise = require('bluebird'),
     _ = require('lodash'),
     BaseImporter = require('./base'),
     models = require('../../../../models'),
-    defaultSettings = require('../../../schema/default-settings.json'),
+    defaultSettings = require('../../../schema').defaultSettings,
     labsDefaults = JSON.parse(defaultSettings.blog.labs.defaultValue);
 
 class SettingsImporter extends BaseImporter {
@@ -20,31 +18,60 @@ class SettingsImporter extends BaseImporter {
             returnDuplicates: true,
             showNotFoundWarning: false
         };
-
-        // Map legacy keys
-        this.legacySettingsKeyValues = {
-            isPrivate: 'is_private',
-            activeTimezone: 'active_timezone',
-            cover: 'cover_image'
-        };
     }
 
     /**
      * - 'core' and 'theme' are blacklisted
-     * - clean up legacy plugin setting references
      * - handle labs setting
      */
     beforeImport() {
         debug('beforeImport');
 
-        let ltsActiveTheme = _.find(this.dataToImport, {key: 'activeTheme'});
+        const activeTheme = _.find(this.dataToImport, {key: 'active_theme'});
 
-        // If there is an lts we want to warn user that theme is not imported
-        if (ltsActiveTheme) {
+        // We don't import themes. You have to upload the theme first.
+        if (activeTheme) {
             this.problems.push({
                 message: 'Theme not imported, please upload in Settings - Design',
                 help: this.modelName,
-                context: JSON.stringify(ltsActiveTheme)
+                context: JSON.stringify(activeTheme)
+            });
+        }
+
+        const activeApps = _.find(this.dataToImport, {key: 'active_apps'});
+        const installedApps = _.find(this.dataToImport, {key: 'installed_apps'});
+
+        const hasValueEntries = (setting = {}) => {
+            try {
+                return JSON.parse(setting.value || '[]').length !== 0;
+            } catch (e) {
+                return false;
+            }
+        };
+
+        if (hasValueEntries(activeApps) || hasValueEntries(installedApps)) {
+            this.problems.push({
+                message: 'Old settings for apps were not imported',
+                help: this.modelName,
+                context: JSON.stringify({activeApps, installedApps})
+            });
+        }
+
+        this.dataToImport = _.filter(this.dataToImport, (data) => {
+            return data.key !== 'active_apps' && data.key !== 'installed_apps';
+        });
+
+        const permalinks = _.find(this.dataToImport, {key: 'permalinks'});
+
+        if (permalinks) {
+            this.problems.push({
+                message: 'Permalink Setting was removed. Please configure permalinks in your routes.yaml.',
+                help: this.modelName,
+                context: JSON.stringify(permalinks)
+            });
+
+            this.dataToImport = _.filter(this.dataToImport, (data) => {
+                return data.key !== 'permalinks';
             });
         }
 
@@ -54,12 +81,27 @@ class SettingsImporter extends BaseImporter {
         });
 
         _.each(this.dataToImport, (obj) => {
-            obj.key = this.legacySettingsKeyValues[obj.key] || obj.key;
-
             if (obj.key === 'labs' && obj.value) {
                 // Overwrite the labs setting with our current defaults
                 // Ensures things that are enabled in new versions, are turned on
                 obj.value = JSON.stringify(_.assign({}, JSON.parse(obj.value), labsDefaults));
+            }
+
+            // CASE: we do not import slack hooks, otherwise it can happen very fast that you are pinging someone's slack channel
+            if (obj.key === 'slack') {
+                obj.value = JSON.stringify([{url: ''}]);
+            }
+
+            // CASE: export files might contain "0" or "1" for booleans. Model layer needs real booleans.
+            // transform "0" to false
+            if (obj.value === '0' || obj.value === '1') {
+                obj.value = !!+obj.value;
+            }
+
+            // CASE: export files might contain "false" or "true" for booleans. Model layer needs real booleans.
+            // transform "false" to false
+            if (obj.value === 'false' || obj.value === 'true') {
+                obj.value = obj.value === 'true';
             }
         });
 
@@ -86,14 +128,6 @@ class SettingsImporter extends BaseImporter {
         });
 
         return Promise.all(ops);
-    }
-
-    /**
-     * We only update existing settings models.
-     * Nothing todo here.
-     */
-    afterImport() {
-        return Promise.resolve();
     }
 }
 

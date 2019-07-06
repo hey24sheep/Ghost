@@ -1,17 +1,16 @@
-var should = require('should'), // jshint ignore:line
-    card = require('../../../../../server/lib/mobiledoc/atoms/soft-return'),
-    SimpleDom = require('simple-dom'),
-    opts;
+const should = require('should');
+const atom = require('../../../../../server/lib/mobiledoc/atoms/soft-return');
+const SimpleDom = require('simple-dom');
+const serializer = new SimpleDom.HTMLSerializer(SimpleDom.voidMap);
 
-describe('Soft return card', function () {
+describe('Soft return atom', function () {
     it('generates a `br` tag', function () {
-        opts = {
+        let opts = {
             env: {
                 dom: new SimpleDom.Document()
             }
         };
 
-        var serializer = new SimpleDom.HTMLSerializer([]);
-        serializer.serialize(card.render(opts)).should.match('<br></br>');
+        serializer.serialize(atom.render(opts)).should.match('<br>');
     });
 });

@@ -1,5 +1,6 @@
 var should = require('should'),
     sinon = require('sinon'),
+    rewire = require('rewire'),
     Promise = require('bluebird'),
     _ = require('lodash'),
     testUtils = require('../../../utils'),
@@ -10,20 +11,19 @@ var should = require('should'),
     // Stuff we are testing
     ImportManager = require('../../../../server/data/importer'),
     JSONHandler = require('../../../../server/data/importer/handlers/json'),
-    ImageHandler = require('../../../../server/data/importer/handlers/image'),
+    ImageHandler = rewire('../../../../server/data/importer/handlers/image'),
     MarkdownHandler = require('../../../../server/data/importer/handlers/markdown'),
     DataImporter = require('../../../../server/data/importer/importers/data'),
     ImageImporter = require('../../../../server/data/importer/importers/image'),
 
     storage = require('../../../../server/adapters/storage'),
 
-    configUtils = require('../../../utils/configUtils'),
-    sandbox = sinon.sandbox.create();
+    urlUtils = require('../../../utils/urlUtils');
 
 describe('Importer', function () {
     afterEach(function () {
-        sandbox.restore();
-        configUtils.restore();
+        sinon.restore();
+        ImageHandler = rewire('../../../../server/data/importer/handlers/image');
     });
 
     describe('ImportManager', function () {
@@ -37,7 +37,7 @@ describe('Importer', function () {
         });
 
         it('gets the correct extensions', function () {
-            ImportManager.getExtensions().should.be.instanceof(Array).and.have.lengthOf(10);
+            ImportManager.getExtensions().should.be.instanceof(Array).and.have.lengthOf(11);
             ImportManager.getExtensions().should.containEql('.json');
             ImportManager.getExtensions().should.containEql('.zip');
             ImportManager.getExtensions().should.containEql('.jpg');
@@ -45,7 +45,7 @@ describe('Importer', function () {
         });
 
         it('gets the correct types', function () {
-            ImportManager.getContentTypes().should.be.instanceof(Array).and.have.lengthOf(10);
+            ImportManager.getContentTypes().should.be.instanceof(Array).and.have.lengthOf(12);
             ImportManager.getContentTypes().should.containEql('application/octet-stream');
             ImportManager.getContentTypes().should.containEql('application/json');
             ImportManager.getContentTypes().should.containEql('application/zip');
@@ -61,27 +61,27 @@ describe('Importer', function () {
 
         it('globs extensions correctly', function () {
             ImportManager.getGlobPattern(ImportManager.getExtensions())
-                .should.equal('+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.json|.md|.markdown|.zip)');
+                .should.equal('+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.ico|.json|.md|.markdown|.zip)');
             ImportManager.getGlobPattern(ImportManager.getDirectories())
                 .should.equal('+(images|content)');
             ImportManager.getGlobPattern(JSONHandler.extensions)
                 .should.equal('+(.json)');
             ImportManager.getGlobPattern(ImageHandler.extensions)
-                .should.equal('+(.jpg|.jpeg|.gif|.png|.svg|.svgz)');
+                .should.equal('+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.ico)');
             ImportManager.getExtensionGlob(ImportManager.getExtensions())
-                .should.equal('*+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.json|.md|.markdown|.zip)');
+                .should.equal('*+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.ico|.json|.md|.markdown|.zip)');
             ImportManager.getDirectoryGlob(ImportManager.getDirectories())
                 .should.equal('+(images|content)');
             ImportManager.getExtensionGlob(ImportManager.getExtensions(), 0)
-                .should.equal('*+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.json|.md|.markdown|.zip)');
+                .should.equal('*+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.ico|.json|.md|.markdown|.zip)');
             ImportManager.getDirectoryGlob(ImportManager.getDirectories(), 0)
                 .should.equal('+(images|content)');
             ImportManager.getExtensionGlob(ImportManager.getExtensions(), 1)
-                .should.equal('{*/*,*}+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.json|.md|.markdown|.zip)');
+                .should.equal('{*/*,*}+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.ico|.json|.md|.markdown|.zip)');
             ImportManager.getDirectoryGlob(ImportManager.getDirectories(), 1)
                 .should.equal('{*/,}+(images|content)');
             ImportManager.getExtensionGlob(ImportManager.getExtensions(), 2)
-                .should.equal('**/*+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.json|.md|.markdown|.zip)');
+                .should.equal('**/*+(.jpg|.jpeg|.gif|.png|.svg|.svgz|.ico|.json|.md|.markdown|.zip)');
             ImportManager.getDirectoryGlob(ImportManager.getDirectories(), 2)
                 .should.equal('**/+(images|content)');
         });
@@ -90,8 +90,8 @@ describe('Importer', function () {
         describe('loadFile', function () {
             it('knows when to process a file', function (done) {
                 var testFile = {name: 'myFile.json', path: '/my/path/myFile.json'},
-                    zipSpy = sandbox.stub(ImportManager, 'processZip').returns(Promise.resolve()),
-                    fileSpy = sandbox.stub(ImportManager, 'processFile').returns(Promise.resolve());
+                    zipSpy = sinon.stub(ImportManager, 'processZip').returns(Promise.resolve()),
+                    fileSpy = sinon.stub(ImportManager, 'processFile').returns(Promise.resolve());
 
                 ImportManager.loadFile(testFile).then(function () {
                     zipSpy.calledOnce.should.be.false();
@@ -103,8 +103,8 @@ describe('Importer', function () {
             // We need to make sure we don't actually extract a zip and leave temporary files everywhere!
             it('knows when to process a zip', function (done) {
                 var testZip = {name: 'myFile.zip', path: '/my/path/myFile.zip'},
-                    zipSpy = sandbox.stub(ImportManager, 'processZip').returns(Promise.resolve()),
-                    fileSpy = sandbox.stub(ImportManager, 'processFile').returns(Promise.resolve());
+                    zipSpy = sinon.stub(ImportManager, 'processZip').returns(Promise.resolve()),
+                    fileSpy = sinon.stub(ImportManager, 'processFile').returns(Promise.resolve());
 
                 ImportManager.loadFile(testZip).then(function () {
                     zipSpy.calledOnce.should.be.true();
@@ -117,17 +117,16 @@ describe('Importer', function () {
                 var testFile = {name: 'myFile.json', path: '/my/path/myFile.json'},
                     testZip = {name: 'myFile.zip', path: '/my/path/myFile.zip'},
                     // need to stub out the extract and glob function for zip
-                    extractSpy = sandbox.stub(ImportManager, 'extractZip').returns(Promise.resolve('/tmp/dir/')),
-                    validSpy = sandbox.stub(ImportManager, 'isValidZip').returns(true),
-                    baseDirSpy = sandbox.stub(ImportManager, 'getBaseDirectory').returns(),
-                    getFileSpy = sandbox.stub(ImportManager, 'getFilesFromZip'),
-                    jsonSpy = sandbox.stub(JSONHandler, 'loadFile').returns(Promise.resolve({posts: []})),
-                    imageSpy = sandbox.stub(ImageHandler, 'loadFile'),
-                    mdSpy = sandbox.stub(MarkdownHandler, 'loadFile');
+                    extractSpy = sinon.stub(ImportManager, 'extractZip').returns(Promise.resolve('/tmp/dir/')),
+                    validSpy = sinon.stub(ImportManager, 'isValidZip').returns(true),
+                    baseDirSpy = sinon.stub(ImportManager, 'getBaseDirectory').returns(),
+                    getFileSpy = sinon.stub(ImportManager, 'getFilesFromZip'),
+                    jsonSpy = sinon.stub(JSONHandler, 'loadFile').returns(Promise.resolve({posts: []})),
+                    imageSpy = sinon.stub(ImageHandler, 'loadFile'),
+                    mdSpy = sinon.stub(MarkdownHandler, 'loadFile');
 
+                getFileSpy.returns([]);
                 getFileSpy.withArgs(JSONHandler).returns(['/tmp/dir/myFile.json']);
-                getFileSpy.withArgs(ImageHandler).returns([]);
-                getFileSpy.withArgs(MarkdownHandler).returns([]);
 
                 ImportManager.processZip(testZip).then(function (zipResult) {
                     extractSpy.calledOnce.should.be.true();
@@ -213,8 +212,8 @@ describe('Importer', function () {
                 var input = {data: {}, images: []},
                     // pass a copy so that input doesn't get modified
                     inputCopy = _.cloneDeep(input),
-                    dataSpy = sandbox.spy(DataImporter, 'preProcess'),
-                    imageSpy = sandbox.spy(ImageImporter, 'preProcess');
+                    dataSpy = sinon.spy(DataImporter, 'preProcess'),
+                    imageSpy = sinon.spy(ImageImporter, 'preProcess');
 
                 ImportManager.preProcess(inputCopy).then(function (output) {
                     dataSpy.calledOnce.should.be.true();
@@ -239,10 +238,10 @@ describe('Importer', function () {
                 var input = {data: {posts: []}, images: []},
                     // pass a copy so that input doesn't get modified
                     inputCopy = _.cloneDeep(input),
-                    dataSpy = sandbox.stub(DataImporter, 'doImport').callsFake(function (i) {
+                    dataSpy = sinon.stub(DataImporter, 'doImport').callsFake(function (i) {
                         return Promise.resolve(i);
                     }),
-                    imageSpy = sandbox.stub(ImageImporter, 'doImport').callsFake(function (i) {
+                    imageSpy = sinon.stub(ImageImporter, 'doImport').callsFake(function (i) {
                         return Promise.resolve(i);
                     }),
 
@@ -280,11 +279,11 @@ describe('Importer', function () {
 
         describe('importFromFile', function () {
             it('does the import steps in order', function (done) {
-                var loadFileSpy = sandbox.stub(ImportManager, 'loadFile').returns(Promise.resolve()),
-                    preProcessSpy = sandbox.stub(ImportManager, 'preProcess').returns(Promise.resolve()),
-                    doImportSpy = sandbox.stub(ImportManager, 'doImport').returns(Promise.resolve()),
-                    generateReportSpy = sandbox.stub(ImportManager, 'generateReport').returns(Promise.resolve()),
-                    cleanupSpy = sandbox.stub(ImportManager, 'cleanUp').returns({});
+                var loadFileSpy = sinon.stub(ImportManager, 'loadFile').returns(Promise.resolve()),
+                    preProcessSpy = sinon.stub(ImportManager, 'preProcess').returns(Promise.resolve()),
+                    doImportSpy = sinon.stub(ImportManager, 'doImport').returns(Promise.resolve()),
+                    generateReportSpy = sinon.stub(ImportManager, 'generateReport').returns(Promise.resolve()),
+                    cleanupSpy = sinon.stub(ImportManager, 'cleanUp').returns({});
 
                 ImportManager.importFromFile({}).then(function () {
                     loadFileSpy.calledOnce.should.be.true();
@@ -313,8 +312,8 @@ describe('Importer', function () {
 
         it('correctly handles a valid db api wrapper', function (done) {
             var file = [{
-                path: testUtils.fixtures.getExportFixturePath('export-003-api-wrapper', {lts: true}),
-                name: 'export-003-api-wrapper.json'
+                path: testUtils.fixtures.getExportFixturePath('valid'),
+                name: 'valid.json'
             }];
             JSONHandler.loadFile(file).then(function (result) {
                 _.keys(result).should.containEql('meta');
@@ -325,8 +324,8 @@ describe('Importer', function () {
 
         it('correctly errors when given a bad db api wrapper', function (done) {
             var file = [{
-                path: testUtils.fixtures.getExportFixturePath('export-003-api-wrapper-bad', {lts: true}),
-                name: 'export-003-api-wrapper-bad.json'
+                path: testUtils.fixtures.getExportFixturePath('broken'),
+                name: 'broken.json'
             }];
 
             JSONHandler.loadFile(file).then(function () {
@@ -343,18 +342,21 @@ describe('Importer', function () {
 
         it('has the correct interface', function () {
             ImageHandler.type.should.eql('images');
-            ImageHandler.extensions.should.be.instanceof(Array).and.have.lengthOf(6);
+            ImageHandler.extensions.should.be.instanceof(Array).and.have.lengthOf(7);
             ImageHandler.extensions.should.containEql('.jpg');
             ImageHandler.extensions.should.containEql('.jpeg');
             ImageHandler.extensions.should.containEql('.gif');
             ImageHandler.extensions.should.containEql('.png');
             ImageHandler.extensions.should.containEql('.svg');
             ImageHandler.extensions.should.containEql('.svgz');
-            ImageHandler.contentTypes.should.be.instanceof(Array).and.have.lengthOf(4);
+            ImageHandler.extensions.should.containEql('.ico');
+            ImageHandler.contentTypes.should.be.instanceof(Array).and.have.lengthOf(6);
             ImageHandler.contentTypes.should.containEql('image/jpeg');
             ImageHandler.contentTypes.should.containEql('image/png');
             ImageHandler.contentTypes.should.containEql('image/gif');
             ImageHandler.contentTypes.should.containEql('image/svg+xml');
+            ImageHandler.contentTypes.should.containEql('image/x-icon');
+            ImageHandler.contentTypes.should.containEql('image/vnd.microsoft.icon');
             ImageHandler.loadFile.should.be.instanceof(Function);
         });
 
@@ -364,8 +366,8 @@ describe('Importer', function () {
                     path: '/my/test/' + filename,
                     name: filename
                 }],
-                storeSpy = sandbox.spy(store, 'getUniqueFileName'),
-                storageSpy = sandbox.spy(storage, 'getStorage');
+                storeSpy = sinon.spy(store, 'getUniqueFileName'),
+                storageSpy = sinon.spy(storage, 'getStorage');
 
             ImageHandler.loadFile(_.clone(file)).then(function () {
                 storageSpy.calledOnce.should.be.true();
@@ -384,8 +386,8 @@ describe('Importer', function () {
                     path: '/my/test/' + filename,
                     name: filename
                 }],
-                storeSpy = sandbox.spy(store, 'getUniqueFileName'),
-                storageSpy = sandbox.spy(storage, 'getStorage');
+                storeSpy = sinon.spy(store, 'getUniqueFileName'),
+                storageSpy = sinon.spy(storage, 'getStorage');
 
             ImageHandler.loadFile(_.clone(file)).then(function () {
                 storageSpy.calledOnce.should.be.true();
@@ -404,8 +406,8 @@ describe('Importer', function () {
                     path: '/my/test/content/images/' + filename,
                     name: filename
                 }],
-                storeSpy = sandbox.spy(store, 'getUniqueFileName'),
-                storageSpy = sandbox.spy(storage, 'getStorage');
+                storeSpy = sinon.spy(store, 'getUniqueFileName'),
+                storageSpy = sinon.spy(storage, 'getStorage');
 
             ImageHandler.loadFile(_.clone(file)).then(function () {
                 storageSpy.calledOnce.should.be.true();
@@ -419,15 +421,15 @@ describe('Importer', function () {
         });
 
         it('can load a file (subdirectory)', function (done) {
-            configUtils.set({url: 'http://localhost:82832/subdir'});
+            ImageHandler.__set__('urlUtils', urlUtils.getInstance({url: 'http://localhost:82832/subdir'}));
 
             var filename = 'test-image.jpeg',
                 file = [{
                     path: '/my/test/' + filename,
                     name: filename
                 }],
-                storeSpy = sandbox.spy(store, 'getUniqueFileName'),
-                storageSpy = sandbox.spy(storage, 'getStorage');
+                storeSpy = sinon.spy(store, 'getUniqueFileName'),
+                storageSpy = sinon.spy(storage, 'getStorage');
 
             ImageHandler.loadFile(_.clone(file)).then(function () {
                 storageSpy.calledOnce.should.be.true();
@@ -457,8 +459,8 @@ describe('Importer', function () {
                         path: '/my/test/images/puppy.jpg',
                         name: 'images/puppy.jpg'
                     }],
-                storeSpy = sandbox.spy(store, 'getUniqueFileName'),
-                storageSpy = sandbox.spy(storage, 'getStorage');
+                storeSpy = sinon.spy(store, 'getUniqueFileName'),
+                storageSpy = sinon.spy(storage, 'getStorage');
 
             ImageHandler.loadFile(_.clone(files)).then(function () {
                 storageSpy.calledOnce.should.be.true();
@@ -684,9 +686,9 @@ describe('Importer', function () {
         it('does import the images correctly', function () {
             var inputData = require('../../../utils/fixtures/import/import-data-1.json'),
                 storageApi = {
-                    save: sandbox.stub().returns(Promise.resolve())
+                    save: sinon.stub().returns(Promise.resolve())
                 },
-                storageSpy = sandbox.stub(storage, 'getStorage').callsFake(function () {
+                storageSpy = sinon.stub(storage, 'getStorage').callsFake(function () {
                     return storageApi;
                 });
 

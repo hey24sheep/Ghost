@@ -1,16 +1,14 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
 
     config = require('../../../../server/config'),
     // is only exposed via themes.getActive()
-    activeTheme = require('../../../../server/services/themes/active'),
-    engine = require('../../../../server/services/themes/engine'),
-
-    sandbox = sinon.sandbox.create();
+    activeTheme = require('../../../../frontend/services/themes/active'),
+    engine = require('../../../../frontend/services/themes/engine');
 
 describe('Themes', function () {
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     describe('Active', function () {
@@ -19,13 +17,13 @@ describe('Themes', function () {
                 fakeBlogApp, fakeLoadedTheme, fakeCheckedTheme;
 
             beforeEach(function () {
-                engineStub = sandbox.stub(engine, 'configure');
-                configStub = sandbox.stub(config, 'set');
+                engineStub = sinon.stub(engine, 'configure');
+                configStub = sinon.stub(config, 'set');
 
                 fakeBlogApp = {
                     cache: ['stuff'],
-                    set: sandbox.stub(),
-                    engine: sandbox.stub()
+                    set: sinon.stub(),
+                    engine: sinon.stub()
                 };
 
                 fakeLoadedTheme = {

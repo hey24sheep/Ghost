@@ -1,4 +1,4 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
     _ = require('lodash'),
     nock = require('nock'),
@@ -7,20 +7,18 @@ var should = require('should'), // jshint ignore:line
     testUtils = require('../../utils'),
     configUtils = require('../../utils/configUtils'),
     xmlrpc = rewire('../../../server/services/xmlrpc'),
-    common = require('../../../server/lib/common'),
-
-    sandbox = sinon.sandbox.create();
+    common = require('../../../server/lib/common');
 
 describe('XMLRPC', function () {
     var eventStub;
 
     beforeEach(function () {
-        eventStub = sandbox.stub(common.events, 'on');
+        eventStub = sinon.stub(common.events, 'on');
         configUtils.set('privacy:useRpcPing', true);
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
         configUtils.restore();
         nock.cleanAll();
     });
@@ -38,7 +36,7 @@ describe('XMLRPC', function () {
                     return testPost;
                 }
             },
-            pingStub = sandbox.stub(),
+            pingStub = sinon.stub(),
             resetXmlRpc = xmlrpc.__set__('ping', pingStub),
             listener = xmlrpc.__get__('listener');
 
@@ -58,7 +56,7 @@ describe('XMLRPC', function () {
                     return testPost;
                 }
             },
-            pingStub = sandbox.stub(),
+            pingStub = sinon.stub(),
             resetXmlRpc = xmlrpc.__set__('ping', pingStub),
             listener = xmlrpc.__get__('listener');
 
@@ -74,14 +72,13 @@ describe('XMLRPC', function () {
         var ping = xmlrpc.__get__('ping');
 
         it('with a post should execute two pings', function (done) {
-            var ping1 = nock('http://blogsearch.google.com').post('/ping/RPC2').reply(200),
-                ping2 = nock('http://rpc.pingomatic.com').post('/').reply(200),
+            var ping1 = nock('http://rpc.pingomatic.com').post('/').reply(200),
                 testPost = _.clone(testUtils.DataGenerator.Content.posts[2]);
 
             ping(testPost);
 
             (function retry() {
-                if (ping1.isDone() && ping2.isDone()) {
+                if (ping1.isDone()) {
                     return done();
                 }
 
@@ -90,8 +87,7 @@ describe('XMLRPC', function () {
         });
 
         it('with default post should not execute pings', function () {
-            var ping1 = nock('http://blogsearch.google.com').post('/ping/RPC2').reply(200),
-                ping2 = nock('http://rpc.pingomatic.com').post('/').reply(200),
+            var ping1 = nock('http://rpc.pingomatic.com').post('/').reply(200),
                 testPost = _.clone(testUtils.DataGenerator.Content.posts[2]);
 
             testPost.slug = 'welcome';
@@ -99,23 +95,19 @@ describe('XMLRPC', function () {
             ping(testPost);
 
             ping1.isDone().should.be.false();
-            ping2.isDone().should.be.false();
         });
 
         it('with a page should not execute pings', function () {
-            var ping1 = nock('http://blogsearch.google.com').post('/ping/RPC2').reply(200),
-                ping2 = nock('http://rpc.pingomatic.com').post('/').reply(200),
+            var ping1 = nock('http://rpc.pingomatic.com').post('/').reply(200),
                 testPage = _.clone(testUtils.DataGenerator.Content.posts[5]);
 
             ping(testPage);
 
             ping1.isDone().should.be.false();
-            ping2.isDone().should.be.false();
         });
 
         it('when privacy.useRpcPing is false should not execute pings', function () {
-            var ping1 = nock('http://blogsearch.google.com').post('/ping/RPC2').reply(200),
-                ping2 = nock('http://rpc.pingomatic.com').post('/').reply(200),
+            var ping1 = nock('http://rpc.pingomatic.com').post('/').reply(200),
                 testPost = _.clone(testUtils.DataGenerator.Content.posts[2]);
 
             configUtils.set({privacy: {useRpcPing: false}});
@@ -123,21 +115,131 @@ describe('XMLRPC', function () {
             ping(testPost);
 
             ping1.isDone().should.be.false();
-            ping2.isDone().should.be.false();
         });
 
         it('captures && logs errors from requests', function (done) {
             var testPost = _.clone(testUtils.DataGenerator.Content.posts[2]),
-                ping1 = nock('http://blogsearch.google.com').post('/ping/RPC2').reply(500),
-                ping2 = nock('http://rpc.pingomatic.com').post('/').reply(400),
-                loggingStub = sandbox.stub(common.logging, 'error');
+                ping1 = nock('http://rpc.pingomatic.com').post('/').reply(400),
+                loggingStub = sinon.stub(common.logging, 'error');
 
             ping(testPost);
 
             (function retry() {
-                if (ping1.isDone() && ping2.isDone()) {
-                    loggingStub.calledTwice.should.eql(true);
-                    loggingStub.args[0][0].message.should.containEql('Response code 500');
+                if (ping1.isDone()) {
+                    loggingStub.calledOnce.should.eql(true);
+                    loggingStub.args[0][0].message.should.containEql('Response code 400');
+                    return done();
+                }
+
+                setTimeout(retry, 100);
+            }());
+        });
+
+        it('captures && logs XML errors from requests with newlines between tags', function (done) {
+            var testPost = _.clone(testUtils.DataGenerator.Content.posts[2]),
+                ping1 = nock('http://rpc.pingomatic.com').post('/').reply(200,
+                `<?xml version="1.0"?>
+                 <methodResponse>
+                   <params>
+                     <param>
+                       <value>
+                         <struct>
+                           <member>
+                             <name>flerror</name>
+                             <value>
+                               <boolean>1</boolean>
+                             </value>
+                           </member>
+                           <member>
+                             <name>message</name>
+                             <value>
+                              <string>Uh oh. A wee lil error.</string>
+                             </value>
+                           </member>
+                         </struct>
+                       </value>
+                     </param>
+                   </params>
+                 </methodResponse>`),
+                loggingStub = sinon.stub(common.logging, 'error');
+
+            ping(testPost);
+
+            (function retry() {
+                if (ping1.isDone()) {
+                    loggingStub.calledOnce.should.eql(true);
+                    loggingStub.args[0][0].message.should.equal('Uh oh. A wee lil error.');
+                    return done();
+                }
+
+                setTimeout(retry, 100);
+            }());
+        });
+
+        it('captures && logs XML errors from requests without newlines between tags', function (done) {
+            var testPost = _.clone(testUtils.DataGenerator.Content.posts[2]),
+                ping1 = nock('http://rpc.pingomatic.com').post('/').reply(200,
+                (`<?xml version="1.0"?>
+                 <methodResponse>
+                   <params>
+                     <param>
+                       <value>
+                         <struct>
+                           <member>
+                             <name>flerror</name>
+                             <value>
+                               <boolean>1</boolean>
+                             </value>
+                           </member>
+                           <member>
+                             <name>message</name>
+                             <value>
+                              <string>Uh oh. A wee lil error.</string>
+                             </value>
+                           </member>
+                         </struct>
+                       </value>
+                     </param>
+                   </params>
+                 </methodResponse>`).replace('\n', '')),
+                loggingStub = sinon.stub(common.logging, 'error');
+
+            ping(testPost);
+
+            (function retry() {
+                if (ping1.isDone()) {
+                    loggingStub.calledOnce.should.eql(true);
+                    loggingStub.args[0][0].message.should.equal('Uh oh. A wee lil error.');
+                    return done();
+                }
+
+                setTimeout(retry, 100);
+            }());
+        });
+
+        it('does not error with responses that have 0 as flerror value', function (done) {
+            var testPost = _.clone(testUtils.DataGenerator.Content.posts[2]),
+                ping1 = nock('http://rpc.pingomatic.com').post('/').reply(200,
+                `<?xml version="1.0"?>
+                    <methodResponse>
+                      <params>
+                        <param>
+                          <value>
+                            <struct>
+                              <member><name>flerror</name><value><boolean>0</boolean></value></member>
+                              <member><name>message</name><value><string>Pings being forwarded to 9 services!</string></value></member>
+                    </struct>
+                          </value>
+                        </param>
+                      </params>
+                    </methodResponse>`),
+                loggingStub = sinon.stub(common.logging, 'error');
+
+            ping(testPost);
+
+            (function retry() {
+                if (ping1.isDone()) {
+                    loggingStub.calledOnce.should.eql(false);
                     return done();
                 }
 

@@ -1,13 +1,11 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
 
-    themeConfig = require('../../../../server/services/themes/config'),
-
-    sandbox = sinon.sandbox.create();
+    themeConfig = require('../../../../frontend/services/themes/config');
 
 describe('Themes', function () {
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     describe('Config', function () {

@@ -1,4 +1,4 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     path = require('path'),
     fs = require('fs-extra'),
     extract = require('extract-zip'),
@@ -40,7 +40,7 @@ describe('lib/fs: read csv', function () {
                         return done(err);
                     }
 
-                    files.length.should.eql(13);
+                    files.length.should.eql(16);
                     done();
                 });
             });

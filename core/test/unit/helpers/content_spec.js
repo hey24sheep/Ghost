@@ -1,9 +1,17 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
 
 // Stuff we are testing
-    helpers = require('../../../server/helpers');
+    helpers = require('../../../frontend/helpers');
 
 describe('{{content}} helper', function () {
+    it('renders empty string when null', function () {
+        var html = null,
+            rendered = helpers.content.call({html: html});
+
+        should.exist(rendered);
+        rendered.string.should.equal('');
+    });
+
     it('can render content', function () {
         var html = 'Hello World',
             rendered = helpers.content.call({html: html});

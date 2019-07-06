@@ -1,4 +1,4 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     parseContext = require('../../../../server/services/permissions/parse-context');
 
 describe('Permissions', function () {
@@ -8,15 +8,19 @@ describe('Permissions', function () {
                 internal: false,
                 external: false,
                 user: null,
+                api_key: null,
                 app: null,
-                public: true
+                public: true,
+                integration: null
             });
             parseContext({}).should.eql({
                 internal: false,
                 external: false,
                 user: null,
+                api_key: null,
                 app: null,
-                public: true
+                public: true,
+                integration: null
             });
         });
 
@@ -25,15 +29,19 @@ describe('Permissions', function () {
                 internal: false,
                 external: false,
                 user: null,
+                api_key: null,
                 app: null,
-                public: true
+                public: true,
+                integration: null
             });
             parseContext({client: 'thing'}).should.eql({
                 internal: false,
                 external: false,
                 user: null,
+                api_key: null,
                 app: null,
-                public: true
+                public: true,
+                integration: null
             });
         });
 
@@ -42,8 +50,46 @@ describe('Permissions', function () {
                 internal: false,
                 external: false,
                 user: 1,
+                api_key: null,
                 app: null,
-                public: false
+                public: false,
+                integration: null
+            });
+        });
+
+        it('should return api_key and public context if content api_key provided', function () {
+            parseContext({api_key: {
+                id: 1,
+                type: 'content'
+            }, integration: {id: 2}}).should.eql({
+                internal: false,
+                external: false,
+                user: null,
+                api_key: {
+                    id: 1,
+                    type: 'content'
+                },
+                app: null,
+                public: true,
+                integration: {id: 2}
+            });
+        });
+
+        it('should return api_key and non public context if admin api_key provided', function () {
+            parseContext({api_key: {
+                id: 1,
+                type: 'admin'
+            }, integration: {id: 3}}).should.eql({
+                internal: false,
+                external: false,
+                user: null,
+                api_key: {
+                    id: 1,
+                    type: 'admin'
+                },
+                app: null,
+                public: false,
+                integration: {id: 3}
             });
         });
 
@@ -52,8 +98,10 @@ describe('Permissions', function () {
                 internal: false,
                 external: false,
                 user: null,
+                api_key: null,
                 app: 5,
-                public: false
+                public: false,
+                integration: null
             });
         });
 
@@ -62,16 +110,20 @@ describe('Permissions', function () {
                 internal: true,
                 external: false,
                 user: null,
+                api_key: null,
                 app: null,
-                public: false
+                public: false,
+                integration: null
             });
 
             parseContext('internal').should.eql({
                 internal: true,
                 external: false,
                 user: null,
+                api_key: null,
                 app: null,
-                public: false
+                public: false,
+                integration: null
             });
         });
 
@@ -80,16 +132,20 @@ describe('Permissions', function () {
                 internal: false,
                 external: true,
                 user: null,
+                api_key: null,
                 app: null,
-                public: false
+                public: false,
+                integration: null
             });
 
             parseContext('external').should.eql({
                 internal: false,
                 external: true,
                 user: null,
+                api_key: null,
                 app: null,
-                public: false
+                public: false,
+                integration: null
             });
         });
     });

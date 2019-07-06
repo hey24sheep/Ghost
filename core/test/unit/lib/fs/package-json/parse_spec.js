@@ -1,4 +1,4 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     tmp = require('tmp'),
     fs = require('fs-extra'),
     packageJSON = require('../../../../../server/lib/fs/package-json');
@@ -45,7 +45,7 @@ describe('lib/fs/package-json: parse', function () {
             .catch(function (err) {
                 err.message.should.equal('"name" or "version" is missing from theme package.json file.');
                 err.context.should.equal(tmpFile.name);
-                err.help.should.equal('This will be required in future. Please see http://docs.ghost.org/themes/');
+                err.help.should.equal('This will be required in future. Please see https://docs.ghost.org/api/handlebars-themes/');
 
                 done();
             })
@@ -70,7 +70,7 @@ describe('lib/fs/package-json: parse', function () {
             .catch(function (err) {
                 err.message.should.equal('"name" or "version" is missing from theme package.json file.');
                 err.context.should.equal(tmpFile.name);
-                err.help.should.equal('This will be required in future. Please see http://docs.ghost.org/themes/');
+                err.help.should.equal('This will be required in future. Please see https://docs.ghost.org/api/handlebars-themes/');
 
                 done();
             })
@@ -93,7 +93,7 @@ describe('lib/fs/package-json: parse', function () {
             .catch(function (err) {
                 err.message.should.equal('Theme package.json file is malformed');
                 err.context.should.equal(tmpFile.name);
-                err.help.should.equal('This will be required in future. Please see http://docs.ghost.org/themes/');
+                err.help.should.equal('This will be required in future. Please see https://docs.ghost.org/api/handlebars-themes/');
 
                 done();
             })

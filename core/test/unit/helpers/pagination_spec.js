@@ -1,13 +1,13 @@
-var should = require('should'), // jshint ignore:line
-    hbs = require('../../../server/services/themes/engine'),
+var should = require('should'),
+    hbs = require('../../../frontend/services/themes/engine'),
     configUtils = require('../../utils/configUtils'),
     path = require('path'),
 
-    helpers = require('../../../server/helpers');
+    helpers = require('../../../frontend/helpers');
 
 describe('{{pagination}} helper', function () {
     before(function (done) {
-        hbs.express3({partialsDir: [configUtils.config.get('paths').helperTemplates]});
+        hbs.express4({partialsDir: [configUtils.config.get('paths').helperTemplates]});
 
         hbs.cachePartials(function () {
             done();
@@ -28,7 +28,7 @@ describe('{{pagination}} helper', function () {
             return function () {
                 helpers.pagination.call(data);
             };
-        }, expectedMessage = 'The {{pagination}} helper was used outside of a paginated context. See https://themes.ghost.org/docs/pagination.';
+        }, expectedMessage = 'The {{pagination}} helper was used outside of a paginated context. See https://docs.ghost.org/api/handlebars-themes/helpers/pagination/.';
 
         runHelper('not an object').should.throwError(expectedMessage);
         runHelper(function () {
@@ -122,7 +122,7 @@ describe('{{pagination}} helper', function () {
 
 describe('{{pagination}} helper with custom template', function () {
     before(function (done) {
-        hbs.express3({partialsDir: [path.resolve(configUtils.config.get('paths').corePath, 'test/unit/helpers/test_tpl')]});
+        hbs.express4({partialsDir: [path.resolve(configUtils.config.get('paths').corePath, 'test/unit/helpers/test_tpl')]});
 
         hbs.cachePartials(function () {
             done();
@@ -144,5 +144,23 @@ describe('{{pagination}} helper with custom template', function () {
         // strip out carriage returns and compare.
         rendered.string.should.match(/Page 1 of 1/);
         rendered.string.should.containEql('Chaos is a ladder');
+        rendered.string.should.not.containEql('isHeader is set');
+    });
+
+    it('can pass attributes through', function () {
+        var rendered = helpers.pagination.call({
+            pagination: {page: 1, prev: null, next: null, limit: 15, total: 8, pages: 1},
+            tag: {slug: 'slug'}
+        }, {
+            hash: {isHeader: true},
+            data: {
+                blog: {}
+            }
+        });
+        should.exist(rendered);
+        // strip out carriage returns and compare.
+        rendered.string.should.match(/Page 1 of 1/);
+        rendered.string.should.not.containEql('Chaos is a ladder');
+        rendered.string.should.containEql('isHeader is set');
     });
 });

@@ -1,20 +1,19 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
-    getTitle = require('../../../../server/data/meta/title'),
-    settingsCache = require('../../../../server/services/settings/cache'),
-    sandbox = sinon.sandbox.create();
+    getTitle = require('../../../../frontend/meta/title'),
+    settingsCache = require('../../../../server/services/settings/cache');
 
 describe('getTitle', function () {
     var localSettingsCache = {};
 
     beforeEach(function () {
-        sandbox.stub(settingsCache, 'get').callsFake(function (key) {
+        sinon.stub(settingsCache, 'get').callsFake(function (key) {
             return localSettingsCache[key];
         });
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
         localSettingsCache = {};
     });
 
@@ -105,7 +104,7 @@ describe('getTitle', function () {
             pagination: {
                 total: 40,
                 page: 23
-            },
+            }
         }, {
             hash: {
                 page: ' p.%'
@@ -191,9 +190,19 @@ describe('getTitle', function () {
         title.should.equal('My awesome post!');
     });
 
-    it('should return post title if in page context', function () {
+    it('v0.1: should return post title if in page context', function () {
         var title = getTitle({
             post: {
+                title: 'My awesome page!'
+            }
+        }, {context: ['page']});
+
+        title.should.equal('My awesome page!');
+    });
+
+    it('v2: should return page title if in page context', function () {
+        var title = getTitle({
+            page: {
                 title: 'My awesome page!'
             }
         }, {context: ['page']});

@@ -1,16 +1,14 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
     _ = require('lodash'),
-    helpers = require.main.require('core/server/helpers'),
-    handlebars = require.main.require('core/server/services/themes/engine').handlebars,
-
-    sandbox = sinon.sandbox.create();
+    helpers = require.main.require('core/frontend/helpers'),
+    handlebars = require.main.require('core/frontend/services/themes/engine').handlebars;
 
 describe('{{#foreach}} helper', function () {
     var options, context, _this, resultData;
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     describe('(function call)', function () {
@@ -24,8 +22,8 @@ describe('{{#foreach}} helper', function () {
             }
 
             options = {
-                fn: sandbox.spy(fn),
-                inverse: sandbox.spy(),
+                fn: sinon.spy(fn),
+                inverse: sinon.spy(),
                 data: {}
             };
         });
@@ -508,7 +506,7 @@ describe('{{#foreach}} helper', function () {
                         {name: 'second', visibility: 'public'},
                         {name: 'third', visibility: 'internal'},
                         {name: 'fourth', visibility: 'public'},
-                        {name: 'fifth'}
+                        {name: 'fifth', visibility: 'public'}
                     ]
                 },
                 tagObjectHash = {
@@ -517,7 +515,7 @@ describe('{{#foreach}} helper', function () {
                         second: {name: 'second', visibility: 'public'},
                         third: {name: 'third', visibility: 'internal'},
                         fourth: {name: 'fourth', visibility: 'public'},
-                        fifth: {name: 'fifth'}
+                        fifth: {name: 'fifth', visibility: 'public'}
                     }
                 };
 
@@ -547,7 +545,7 @@ describe('{{#foreach}} helper', function () {
 
             it('should output all tags with visibility property set with visibility="public,internal"', function () {
                 var templateString = '<ul>{{#foreach tags visibility="public,internal"}}<li>{{@index}} {{name}}</li>{{/foreach}}</ul>',
-                    expected = '<ul><li>0 first</li><li>1 second</li><li>2 third</li><li>3 fourth</li></ul>';
+                    expected = '<ul><li>0 first</li><li>1 second</li><li>2 third</li><li>3 fourth</li><li>4 fifth</li></ul>';
 
                 shouldCompileToExpected(templateString, tagObjectHash, expected);
                 shouldCompileToExpected(templateString, tagArrayHash, expected);

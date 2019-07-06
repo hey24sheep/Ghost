@@ -1,22 +1,21 @@
-var should = require('should'), // jshint ignore:line
-    sinon = require('sinon'),
-    passport = require('passport'),
-    rewire = require('rewire'),
-    BearerStrategy = require('passport-http-bearer').Strategy,
-    ClientPasswordStrategy = require('passport-oauth2-client-password').Strategy,
-    auth = rewire('../../../../server/services/auth'),
-    common = require('../../../../server/lib/common'),
-    user = {id: 1},
-    info = {scope: '*'},
-    token = 'test_token',
-    testClient = 'test_client',
-    testSecret = 'not_available',
-    client = {
-        id: 2,
-        type: 'ua'
-    },
-
-    sandbox = sinon.sandbox.create();
+const should = require('should');
+const sinon = require('sinon');
+const passport = require('passport');
+const BearerStrategy = require('passport-http-bearer').Strategy;
+const ClientPasswordStrategy = require('passport-oauth2-client-password').Strategy;
+const auth = require('../../../../server/services/auth');
+const common = require('../../../../server/lib/common');
+const models = require('../../../../server/models');
+const labs = require('../../../../server/services/labs');
+const user = {id: 1};
+const info = {scope: '*'};
+const token = 'test_token';
+const testClient = 'test_client';
+const testSecret = 'not_available';
+const client = {
+    id: 2,
+    type: 'ua'
+};
 
 function registerSuccessfulBearerStrategy() {
     // register fake BearerStrategy which always authenticates
@@ -84,15 +83,19 @@ function registerFaultyClientPasswordStrategy() {
 describe('Auth', function () {
     var res, req, next, loggingStub;
 
+    before(function () {
+        models.init();
+    });
+
     beforeEach(function () {
         req = {};
         res = {};
-        next = sandbox.spy();
-        loggingStub = sandbox.stub(common.logging, 'error');
+        next = sinon.spy();
+        loggingStub = sinon.stub(common.logging, 'error');
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     it('should require authorized user (user exists)', function (done) {
@@ -201,6 +204,10 @@ describe('Auth', function () {
     });
 
     describe('Client Authentication', function () {
+        beforeEach(function () {
+            sinon.stub(labs, 'isSet').withArgs('publicAPI').returns(true);
+        });
+
         it('shouldn\'t require authorized client with bearer token', function (done) {
             req.headers = {};
             req.headers.authorization = 'Bearer ' + token;

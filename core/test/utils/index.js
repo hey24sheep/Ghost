@@ -1,5 +1,3 @@
-'use strict';
-
 var Promise = require('bluebird'),
     _ = require('lodash'),
     fs = require('fs-extra'),
@@ -12,23 +10,29 @@ var Promise = require('bluebird'),
     uuid = require('uuid'),
     KnexMigrator = require('knex-migrator'),
     ghost = require('../../server'),
+    GhostServer = require('../../server/ghost-server'),
+    api = require('../../server/api'),
     common = require('../../server/lib/common'),
     fixtureUtils = require('../../server/data/schema/fixtures/utils'),
     db = require('../../server/data/db'),
     schema = require('../../server/data/schema').tables,
     schemaTables = Object.keys(schema),
     models = require('../../server/models'),
-    urlService = require('../../server/services/url'),
-    SettingsLib = require('../../server/services/settings'),
-    SettingsCache = require('../../server/services/settings/cache'),
-    customRedirectsMiddleware = require('../../server/web/middleware/custom-redirects'),
+    urlUtils = require('../../server/lib/url-utils'),
+    urlService = require('../../frontend/services/url'),
+    routingService = require('../../frontend/services/routing'),
+    settingsService = require('../../server/services/settings'),
+    frontendSettingsService = require('../../frontend/services/settings'),
+    settingsCache = require('../../server/services/settings/cache'),
+    imageLib = require('../../server/lib/image'),
+    web = require('../../server/web'),
     permissions = require('../../server/services/permissions'),
     sequence = require('../../server/lib/promise/sequence'),
-    themes = require('../../server/services/themes'),
+    themes = require('../../frontend/services/themes'),
     DataGenerator = require('./fixtures/data-generator'),
     configUtils = require('./configUtils'),
     filterData = require('./fixtures/filter-param'),
-    API = require('./api'),
+    APIUtils = require('./api'),
     mocks = require('./mocks'),
     config = require('../../server/config'),
     knexMigrator = new KnexMigrator(),
@@ -43,13 +47,9 @@ var Promise = require('bluebird'),
     teardown,
     setup,
     truncate,
-    doAuth,
     createUser,
     createPost,
-    login,
-    togglePermalinks,
     startGhost,
-    configureGhost,
 
     initFixtures,
     initData,
@@ -71,7 +71,7 @@ fixtures = {
         return Promise.map(DataGenerator.forKnex.tags, function (tag) {
             return models.Tag.add(tag, module.exports.context.internal);
         }).then(function () {
-            return Promise.map(_.cloneDeep(DataGenerator.forKnex.posts), function (post) {
+            return Promise.each(_.cloneDeep(DataGenerator.forKnex.posts), function (post) {
                 let postTagRelations = _.filter(DataGenerator.forKnex.posts_tags, {post_id: post.id});
                 let postAuthorsRelations = _.filter(DataGenerator.forKnex.posts_authors, {post_id: post.id});
 
@@ -90,12 +90,11 @@ fixtures = {
         });
     },
 
-    insertMultiAuthorPosts: function insertMultiAuthorPosts(max) {
-        /*jshint unused:false*/
+    insertMultiAuthorPosts: function insertMultiAuthorPosts() {
         let i, j, k = 0,
             posts = [];
 
-        max = max || 50;
+        const count = 25;
 
         // insert users of different roles
         return Promise.resolve(fixtures.createUsersWithRoles()).then(function () {
@@ -117,7 +116,7 @@ fixtures = {
             users = _.map(users, 'id');
 
             // Let's insert posts with random authors
-            for (i = 0; i < max; i += 1) {
+            for (i = 0; i < count; i += 1) {
                 const author = users[i % users.length];
                 posts.push(DataGenerator.forKnex.createGenericPost(k, null, null, author));
                 k = k + 1;
@@ -306,6 +305,16 @@ fixtures = {
         });
     },
 
+    createInactiveUser() {
+        const user = DataGenerator.forKnex.createUser({
+            email: 'inactive@test.org',
+            slug: 'inactive',
+            status: 'inactive'
+        });
+
+        return models.User.add(user, module.exports.context.internal);
+    },
+
     createExtraUsers: function createExtraUsers() {
         // grab 3 more users
         var extraUsers =  _.cloneDeep(DataGenerator.Content.users.slice(2, 6));
@@ -369,15 +378,13 @@ fixtures = {
         return path.resolve(__dirname + '/fixtures/import/' + filename);
     },
 
-    getExportFixturePath: function (filename, options) {
-        options = options || {lts: false};
-        var relativePath = options.lts ? '/fixtures/export/lts/' : '/fixtures/export/';
+    getExportFixturePath: function (filename) {
+        var relativePath = '/fixtures/export/';
         return path.resolve(__dirname + relativePath + filename + '.json');
     },
 
-    loadExportFixture: function loadExportFixture(filename, options) {
-        options = options || {lts: false};
-        var filePath = this.getExportFixturePath(filename, options);
+    loadExportFixture: function loadExportFixture(filename) {
+        var filePath = this.getExportFixturePath(filename);
 
         return fs.readFile(filePath).then(function (fileContents) {
             var data;
@@ -403,7 +410,8 @@ fixtures = {
                 Editor: DataGenerator.Content.roles[1].id,
                 Author: DataGenerator.Content.roles[2].id,
                 Owner: DataGenerator.Content.roles[3].id,
-                Contributor: DataGenerator.Content.roles[4].id
+                Contributor: DataGenerator.Content.roles[4].id,
+                'Admin Integration': DataGenerator.Content.roles[5].id
             };
 
         // CASE: if empty db will throw SQLITE_MISUSE, hard to debug
@@ -480,12 +488,41 @@ fixtures = {
         return Promise.map(DataGenerator.forKnex.webhooks, function (webhook) {
             return models.Webhook.add(webhook, module.exports.context.internal);
         });
+    },
+
+    insertIntegrations: function insertIntegrations() {
+        return Promise.map(DataGenerator.forKnex.integrations, function (integration) {
+            return models.Integration.add(integration, module.exports.context.internal);
+        });
+    },
+
+    insertApiKeys: function insertApiKeys() {
+        return Promise.map(DataGenerator.forKnex.api_keys, function (api_key) {
+            return models.ApiKey.add(api_key, module.exports.context.internal);
+        });
     }
 };
 
 /** Test Utility Functions **/
 initData = function initData() {
-    return knexMigrator.init();
+    return knexMigrator.init()
+        .then(function () {
+            common.events.emit('db.ready');
+
+            let timeout;
+
+            return new Promise(function (resolve) {
+                (function retry() {
+                    clearTimeout(timeout);
+
+                    if (urlService.hasFinished()) {
+                        return resolve();
+                    }
+
+                    timeout = setTimeout(retry, 50);
+                })();
+            });
+        });
 };
 
 clearBruteData = function clearBruteData() {
@@ -509,7 +546,10 @@ truncate = function truncate(tableName) {
 // we must always try to delete all tables
 clearData = function clearData() {
     debug('Database reset');
-    return knexMigrator.reset({force: true});
+    return knexMigrator.reset({force: true})
+        .then(function () {
+            urlService.softReset();
+        });
 };
 
 toDoList = {
@@ -559,14 +599,17 @@ toDoList = {
         return fixtures.insertApps();
     },
     settings: function populateSettings() {
-        SettingsCache.shutdown();
-        return SettingsLib.init();
+        settingsCache.shutdown();
+        return settingsService.init();
     },
     'users:roles': function createUsersWithRoles() {
         return fixtures.createUsersWithRoles();
     },
     'users:no-owner': function createUsersWithoutOwner() {
         return fixtures.createUsersWithoutOwner();
+    },
+    'user:inactive': function createInactiveUser() {
+        return fixtures.createInactiveUser();
     },
     'users:extra': function createExtraUsers() {
         return fixtures.createExtraUsers();
@@ -606,6 +649,12 @@ toDoList = {
     },
     webhooks: function insertWebhooks() {
         return fixtures.insertWebhooks();
+    },
+    integrations: function insertIntegrations() {
+        return fixtures.insertIntegrations();
+    },
+    api_keys: function insertApiKeys() {
+        return fixtures.insertApiKeys();
     }
 };
 
@@ -691,35 +740,6 @@ setup = function setup() {
     };
 };
 
-// ## Functions for Route Tests (!!)
-
-/**
- * This function manages the work of ensuring we have an overridden owner user, and grabbing an access token
- * @returns {deferred.promise<AccessToken>}
- */
-// TODO make this do the DB init as well
-doAuth = function doAuth() {
-    var options = arguments,
-        request = arguments[0],
-        fixtureOps;
-
-    // Remove request from this list
-    delete options[0];
-
-    // No DB setup, but override the owner
-    options = _.merge({'owner:post': true}, _.transform(options, function (result, val) {
-        if (val) {
-            result[val] = true;
-        }
-    }));
-
-    fixtureOps = getFixtureOps(options);
-
-    return sequence(fixtureOps).then(function () {
-        return login(request);
-    });
-};
-
 createUser = function createUser(options) {
     var user = options.user,
         role = options.role;
@@ -747,75 +767,14 @@ createPost = function createPost(options) {
     return models.Post.add(post, module.exports.context.internal);
 };
 
-login = function login(request) {
-    // CASE: by default we use the owner to login
-    if (!request.user) {
-        request.user = DataGenerator.Content.users[0];
-    }
-
-    return new Promise(function (resolve, reject) {
-        request.post('/ghost/api/v0.1/authentication/token/')
-            .set('Origin', config.get('url'))
-            .send({
-                grant_type: 'password',
-                username: request.user.email,
-                password: 'Sl1m3rson99',
-                client_id: 'ghost-admin',
-                client_secret: 'not_available'
-            }).then(function then(res) {
-            if (res.statusCode !== 200) {
-                return reject(new common.errors.GhostError({
-                    message: res.body.errors[0].message
-                }));
-            }
-
-            resolve(res.body.access_token);
-        }, reject);
-    });
-};
-
-togglePermalinks = function togglePermalinks(request, toggle) {
-    var permalinkString = toggle === 'date' ? '/:year/:month/:day/:slug/' : '/:slug/';
-
-    return new Promise(function (resolve, reject) {
-        doAuth(request).then(function (token) {
-            request.put('/ghost/api/v0.1/settings/')
-                .set('Authorization', 'Bearer ' + token)
-                .send({
-                    settings: [
-                        {
-                            uuid: '75e994ae-490e-45e6-9207-0eab409c1c04',
-                            key: 'permalinks',
-                            value: permalinkString,
-                            type: 'blog',
-                            created_at: '2014-10-16T17:39:16.005Z',
-                            created_by: 1,
-                            updated_at: '2014-10-20T19:44:18.077Z',
-                            updated_by: 1
-                        }
-                    ]
-                })
-                .end(function (err, res) {
-                    if (err) {
-                        return reject(err);
-                    }
-
-                    if (res.statusCode !== 200) {
-                        return reject(res.body);
-                    }
-
-                    resolve(res.body);
-                });
-        });
-    });
-};
-
 /**
  * Has to run in a transaction for MySQL, otherwise the foreign key check does not work.
  * Sqlite3 has no truncate command.
  */
 teardown = function teardown() {
     debug('Database teardown');
+    urlService.softReset();
+
     var tables = schemaTables.concat(['migrations']);
 
     if (config.get('database:client') === 'sqlite3') {
@@ -860,9 +819,13 @@ teardown = function teardown() {
  * we start with a small function set to mock non existent modules
  */
 originalRequireFn = Module.prototype.require;
-mockNotExistingModule = function mockNotExistingModule(modulePath, module) {
+mockNotExistingModule = function mockNotExistingModule(modulePath, module, error = false) {
     Module.prototype.require = function (path) {
         if (path.match(modulePath)) {
+            if (error) {
+                throw module;
+            }
+
             return module;
         }
 
@@ -887,6 +850,7 @@ startGhost = function startGhost(options) {
         redirectsFile: true,
         forceStart: false,
         copyThemes: true,
+        copySettings: true,
         contentFolder: path.join(os.tmpdir(), uuid.v1(), 'ghost-test'),
         subdir: false
     }, options);
@@ -906,6 +870,7 @@ startGhost = function startGhost(options) {
     fs.ensureDirSync(path.join(contentFolderForTests, 'images'));
     fs.ensureDirSync(path.join(contentFolderForTests, 'logs'));
     fs.ensureDirSync(path.join(contentFolderForTests, 'adapters'));
+    fs.ensureDirSync(path.join(contentFolderForTests, 'settings'));
 
     if (options.copyThemes) {
         // Copy all themes into the new test content folder. Default active theme is always casper. If you want to use a different theme, you have to set the active theme (e.g. stub)
@@ -916,6 +881,10 @@ startGhost = function startGhost(options) {
         fs.copySync(path.join(__dirname, 'fixtures', 'data', 'redirects.json'), path.join(contentFolderForTests, 'data', 'redirects.json'));
     }
 
+    if (options.copySettings) {
+        fs.copySync(path.join(__dirname, 'fixtures', 'settings', 'routes.yaml'), path.join(contentFolderForTests, 'settings', 'routes.yaml'));
+    }
+
     // truncate database and re-run fixtures
     // we have to ensure that some components in Ghost are reloaded
     if (ghostServer && ghostServer.httpServer && !options.forceStart) {
@@ -924,17 +893,63 @@ startGhost = function startGhost(options) {
                 return knexMigrator.init({only: 2});
             })
             .then(function () {
-                SettingsCache.shutdown();
-                return SettingsLib.init();
+                settingsCache.shutdown();
+                return settingsService.init();
+            })
+            .then(function () {
+                return frontendSettingsService.init();
             })
             .then(function () {
                 return themes.init();
             })
             .then(function () {
-                customRedirectsMiddleware.reload();
+                urlService.softReset();
+                common.events.emit('db.ready');
+
+                let timeout;
+
+                return new Promise(function (resolve) {
+                    (function retry() {
+                        clearTimeout(timeout);
+
+                        if (urlService.hasFinished()) {
+                            return resolve();
+                        }
+
+                        timeout = setTimeout(retry, 50);
+                    })();
+                });
+            })
+            .then(function () {
+                web.shared.middlewares.customRedirects.reload();
 
                 common.events.emit('server.start');
-                return ghostServer;
+
+                /**
+                 * @TODO: this is dirty, but makes routing testing a lot easier for now, because the routing test
+                 * has no easy way to access existing resource id's, which are added from the Ghost fixtures.
+                 * I can do `testUtils.existingData.roles[0].id`.
+                 */
+                module.exports.existingData = {};
+                return models.Role.findAll({columns: ['id']})
+                    .then((roles) => {
+                        module.exports.existingData.roles = roles.toJSON();
+
+                        return models.Client.findAll({columns: ['id', 'secret']});
+                    })
+                    .then((clients) => {
+                        module.exports.existingData.clients = clients.toJSON();
+                        return models.User.findAll({columns: ['id', 'email']});
+                    })
+                    .then((users) => {
+                        module.exports.existingData.users = users.toJSON(module.exports.context.internal);
+
+                        return models.Tag.findAll({columns: ['id']});
+                    })
+                    .then((tags) => {
+                        module.exports.existingData.tags = tags.toJSON();
+                    })
+                    .return(ghostServer);
             });
     }
 
@@ -945,9 +960,13 @@ startGhost = function startGhost(options) {
             }
         })
         .then(function initialiseDatabase() {
+            settingsCache.shutdown();
+            settingsCache.reset();
             return knexMigrator.init();
         })
         .then(function initializeGhost() {
+            urlService.resetGenerators();
+
             return ghost();
         })
         .then(function startGhost(_ghostServer) {
@@ -955,47 +974,171 @@ startGhost = function startGhost(options) {
 
             if (options.subdir) {
                 parentApp = express();
-                parentApp.use(urlService.utils.getSubdir(), ghostServer.rootApp);
+                parentApp.use(urlUtils.getSubdir(), ghostServer.rootApp);
                 return ghostServer.start(parentApp);
             }
 
             return ghostServer.start();
         })
+        .then(function () {
+            let timeout;
+
+            GhostServer.announceServerStart();
+
+            return new Promise(function (resolve) {
+                (function retry() {
+                    clearTimeout(timeout);
+
+                    if (urlService.hasFinished()) {
+                        return resolve();
+                    }
+
+                    timeout = setTimeout(retry, 50);
+                })();
+            });
+        })
         .then(function returnGhost() {
-            return ghostServer;
+            /**
+             * @TODO: this is dirty, but makes routing testing a lot easier for now, because the routing test
+             * has no easy way to access existing resource id's, which are added from the Ghost fixtures.
+             * I can do `testUtils.existingData.roles[0].id`.
+             */
+            module.exports.existingData = {};
+            return models.Role.findAll({columns: ['id']})
+                .then((roles) => {
+                    module.exports.existingData.roles = roles.toJSON();
+
+                    return models.Client.findAll({columns: ['id', 'secret']});
+                })
+                .then((clients) => {
+                    module.exports.existingData.clients = clients.toJSON();
+
+                    return models.User.findAll({columns: ['id', 'email']});
+                })
+                .then((users) => {
+                    module.exports.existingData.users = users.toJSON(module.exports.context.internal);
+
+                    return models.Tag.findAll({columns: ['id']});
+                })
+                .then((tags) => {
+                    module.exports.existingData.tags = tags.toJSON();
+                })
+                .return(ghostServer);
         });
-};
-
-/**
- * Minimal configuration to start integration/unit tests.
- */
-configureGhost = function configureGhost(sandbox) {
-    models.init();
-
-    const cacheStub = sandbox.stub(SettingsCache, 'get');
-
-    cacheStub.withArgs('active_theme').returns('casper');
-    cacheStub.withArgs('active_timezone').returns('Etc/UTC');
-    cacheStub.withArgs('permalinks').returns('/:slug/');
-
-    configUtils.set('paths:contentPath', path.join(__dirname, 'fixtures'));
-
-    configUtils.set('times:getImageSizeTimeoutInMS', 1);
-
-    return themes.init();
 };
 
 module.exports = {
     startGhost: startGhost,
-    configureGhost: configureGhost,
+
+    stopGhost: () => {
+        if (ghostServer && ghostServer.httpServer) {
+            return ghostServer.stop()
+                .then(() => {
+                    urlService.resetGenerators();
+                });
+        }
+    },
+
+    integrationTesting: {
+        overrideGhostConfig: function overrideGhostConfig(configUtils) {
+            configUtils.set('paths:contentPath', path.join(__dirname, 'fixtures'));
+            configUtils.set('times:getImageSizeTimeoutInMS', 1);
+        },
+
+        defaultMocks: function defaultMocks(sandbox, options) {
+            options = options || {};
+
+            configUtils.set('paths:contentPath', path.join(__dirname, 'fixtures'));
+
+            const cacheStub = sandbox.stub(settingsCache, 'get');
+
+            cacheStub.withArgs('active_theme').returns(options.theme || 'casper');
+            cacheStub.withArgs('active_timezone').returns('Etc/UTC');
+            cacheStub.withArgs('permalinks').returns('/:slug/');
+            cacheStub.withArgs('labs').returns({publicAPI: true});
+
+            if (options.amp) {
+                cacheStub.withArgs('amp').returns(true);
+            }
+
+            if (options.apps) {
+                cacheStub.withArgs('active_apps').returns([]);
+            }
+
+            sandbox.stub(api.clients, 'read').returns(Promise.resolve({
+                clients: [
+                    {slug: 'ghost-frontend', secret: 'a1bcde23cfe5', status: 'enabled'}
+                ]
+            }));
+
+            sandbox.stub(imageLib.imageSize, 'getImageSizeFromUrl').resolves();
+        },
+
+        initGhost: function () {
+            models.init();
+
+            settingsCache.shutdown();
+
+            return settingsService.init()
+                .then(() => {
+                    return themes.init();
+                });
+        },
+
+        routing: {
+            reset: function () {
+                routingService.registry.resetAll();
+            }
+        },
+
+        urlService: {
+            waitTillFinished: function (options = {dbIsReady: false}) {
+                let timeout;
+
+                if (!options.dbIsReady) {
+                    common.events.emit('db.ready');
+                }
+
+                return new Promise(function (resolve) {
+                    (function retry() {
+                        clearTimeout(timeout);
+
+                        if (urlService.hasFinished()) {
+                            return resolve();
+                        }
+
+                        timeout = setTimeout(retry, 50);
+                    })();
+                });
+            },
+
+            init: function () {
+                const routes = frontendSettingsService.get('routes');
+
+                const collectionRouter = new routingService.CollectionRouter('/', routes.collections['/']);
+                const tagRouter = new routingService.TaxonomyRouter('tag', routes.taxonomies.tag);
+                const authorRouter = new routingService.TaxonomyRouter('author', routes.taxonomies.author);
+
+                common.events.emit('db.ready');
+
+                return this.waitTillFinished();
+            },
+
+            reset: function () {
+                urlService.softReset();
+            },
+
+            resetGenerators: function () {
+                urlService.resetGenerators();
+                urlService.resources.reset({ignoreDBReady: true});
+            }
+        }
+    },
     teardown: teardown,
     truncate: truncate,
     setup: setup,
-    doAuth: doAuth,
     createUser: createUser,
     createPost: createPost,
-    login: login,
-    togglePermalinks: togglePermalinks,
 
     mockNotExistingModule: mockNotExistingModule,
     unmockNotExistingModule: unmockNotExistingModule,
@@ -1038,7 +1181,7 @@ module.exports = {
 
     DataGenerator: DataGenerator,
     filterData: filterData,
-    API: API,
+    API: APIUtils({getFixtureOps: getFixtureOps}),
 
     // Helpers to make it easier to write tests which are easy to read
     context: {
@@ -1048,14 +1191,16 @@ module.exports = {
         admin: {context: {user: DataGenerator.Content.users[1].id}},
         editor: {context: {user: DataGenerator.Content.users[2].id}},
         author: {context: {user: DataGenerator.Content.users[3].id}},
-        contributor: {context: {user: DataGenerator.Content.users[7].id}}
+        contributor: {context: {user: DataGenerator.Content.users[7].id}},
+        admin_api_key: {context: {api_key: DataGenerator.Content.api_keys[0].id}},
+        content_api_key: {context: {api_key: DataGenerator.Content.api_keys[1].id}}
     },
     permissions: {
         owner: {user: {roles: [DataGenerator.Content.roles[3]]}},
         admin: {user: {roles: [DataGenerator.Content.roles[0]]}},
         editor: {user: {roles: [DataGenerator.Content.roles[1]]}},
         author: {user: {roles: [DataGenerator.Content.roles[2]]}},
-        contributor: {user: {roles: [DataGenerator.Content.roles[4]]}},
+        contributor: {user: {roles: [DataGenerator.Content.roles[4]]}}
     },
     users: {
         ids: {

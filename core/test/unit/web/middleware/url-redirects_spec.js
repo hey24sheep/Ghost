@@ -1,9 +1,12 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
-    configUtils = require('../../../utils/configUtils'),
-    urlRedirects = require('../../../../server/web/middleware/url-redirects'),
-
-    sandbox = sinon.sandbox.create();
+    rewire = require('rewire'),
+    urlUtils = require('../../../utils/urlUtils'),
+    urlRedirects = rewire('../../../../server/web/shared/middlewares/url-redirects'),
+    {adminRedirect} = urlRedirects,
+    getAdminRedirectUrl = urlRedirects.__get__('_private.getAdminRedirectUrl'),
+    getBlogRedirectUrl = urlRedirects.__get__('_private.getBlogRedirectUrl'),
+    redirect = urlRedirects.__get__('_private.redirect');
 
 describe('UNIT: url redirects', function () {
     var res, req, next, host;
@@ -15,29 +18,62 @@ describe('UNIT: url redirects', function () {
             }
         };
         res = {
-            redirect: sandbox.spy(),
-            set: sandbox.spy()
+            redirect: sinon.spy(),
+            set: sinon.spy()
         };
 
-        next = sandbox.spy();
+        next = sinon.spy();
     });
 
     afterEach(function () {
-        sandbox.restore();
-        configUtils.restore();
+        sinon.restore();
         host = null;
+    });
+
+    describe('calls to _private.redirect()', function () {
+        let redirectSpy;
+
+        beforeEach(function () {
+            redirectSpy = sinon.spy();
+            urlRedirects.__set__('_private.redirect', redirectSpy);
+        });
+
+        it('urlRedirects passes getAdminRedirectUrl method when iAdmin flag is not set', function () {
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({url: 'https://default.com:2368/'}));
+
+            urlRedirects(req, res, next);
+
+            redirectSpy.calledWith(req, res, next, getBlogRedirectUrl).should.eql(true);
+        });
+
+        it('urlRedirects passes getAdminRedirectUrl method when iAdmin flag present', function () {
+            res.isAdmin = true;
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({url: 'https://default.com:2368/'}));
+
+            urlRedirects(req, res, next);
+
+            redirectSpy.calledWith(req, res, next, getAdminRedirectUrl).should.eql(true);
+        });
+
+        it('adminRedirect passes getAdminRedirectUrl', function () {
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({url: 'https://default.com:2368/'}));
+
+            adminRedirect(req, res, next);
+
+            redirectSpy.calledWith(req, res, next, getAdminRedirectUrl).should.eql(true);
+        });
     });
 
     describe('expect redirect', function () {
         it('blog is https, request is http', function (done) {
-            configUtils.set({
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({
                 url: 'https://default.com:2368/'
-            });
+            }));
 
             host = 'default.com:2368';
 
             req.originalUrl = '/';
-            urlRedirects(req, res, next);
+            redirect(req, res, next, getBlogRedirectUrl);
             next.called.should.be.false();
             res.redirect.called.should.be.true();
             res.redirect.calledWith(301, 'https://default.com:2368/').should.be.true();
@@ -46,14 +82,13 @@ describe('UNIT: url redirects', function () {
         });
 
         it('blog host is !== request host', function (done) {
-            configUtils.set({
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({
                 url: 'https://default.com'
-            });
-
+            }));
             host = 'localhost:2368';
 
             req.originalUrl = '/';
-            urlRedirects(req, res, next);
+            redirect(req, res, next, getBlogRedirectUrl);
             next.called.should.be.false();
             res.redirect.called.should.be.true();
             res.redirect.calledWith(301, 'https://localhost:2368/').should.be.true();
@@ -61,154 +96,138 @@ describe('UNIT: url redirects', function () {
             done();
         });
 
-        it('url and admin url are equal, but protocol is different, request is http', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368',
-                admin: {
-                    url: 'https://default.com:2368'
-                }
+        describe(`admin redirects`, function () {
+            it('url and admin url are equal, but protocol is different, request is http', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368',
+                    adminUrl: 'https://default.com:2368'
+                }));
+
+                host = 'default.com:2368';
+
+                req.originalUrl = '/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.false();
+                res.redirect.calledWith(301, 'https://default.com:2368/ghost/').should.be.true();
+                res.set.called.should.be.true();
+                done();
             });
 
-            host = 'default.com:2368';
-            res.isAdmin = true;
+            it('url and admin url are different, request is http', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368',
+                    adminUrl: 'https://admin.default.com:2368'
+                }));
 
-            req.originalUrl = '/ghost';
-            urlRedirects(req, res, next);
-            next.called.should.be.false();
-            res.redirect.calledWith(301, 'https://default.com:2368/ghost/').should.be.true();
-            res.set.called.should.be.true();
-            done();
-        });
+                host = 'default.com:2368';
 
-        it('url and admin url are different, request is http', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368',
-                admin: {
-                    url: 'https://admin.default.com:2368'
-                }
+                req.originalUrl = '/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.false();
+                res.redirect.calledWith(301, 'https://admin.default.com:2368/ghost/').should.be.true();
+                res.set.called.should.be.true();
+                done();
             });
 
-            host = 'default.com:2368';
-            res.isAdmin = true;
+            it('subdirectory', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368/blog',
+                    adminUrl: 'https://admin.default.com:2368'
+                }));
 
-            req.originalUrl = '/ghost';
-            urlRedirects(req, res, next);
-            next.called.should.be.false();
-            res.redirect.calledWith(301, 'https://admin.default.com:2368/ghost/').should.be.true();
-            res.set.called.should.be.true();
-            done();
-        });
+                host = 'default.com:2368';
 
-        it('subdirectory', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368/blog',
-                admin: {
-                    url: 'https://admin.default.com:2368'
-                }
+                req.originalUrl = '/blog/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.false();
+                res.redirect.calledWith(301, 'https://admin.default.com:2368/blog/ghost/').should.be.true();
+                res.set.called.should.be.true();
+
+                req.secure = true;
+                host = 'admin.default.com:2368';
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.true();
+                res.redirect.calledOnce.should.be.true();
+                res.set.calledOnce.should.be.true();
+                done();
             });
 
-            host = 'default.com:2368';
-            res.isAdmin = true;
+            it('keeps query', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368',
+                    adminUrl: 'https://admin.default.com:2368'
+                }));
 
-            req.originalUrl = '/blog/ghost';
-            urlRedirects(req, res, next);
-            next.called.should.be.false();
-            res.redirect.calledWith(301, 'https://admin.default.com:2368/blog/ghost/').should.be.true();
-            res.set.called.should.be.true();
+                host = 'default.com:2368';
 
-            req.secure = true;
-            host = 'admin.default.com:2368';
-            urlRedirects(req, res, next);
-            next.called.should.be.true();
-            res.redirect.calledOnce.should.be.true();
-            res.set.calledOnce.should.be.true();
-            done();
-        });
+                req.originalUrl = '/ghost';
+                req.query = {
+                    test: true
+                };
 
-        it('keeps query', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368',
-                admin: {
-                    url: 'https://admin.default.com:2368'
-                }
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.false();
+                res.redirect.calledWith(301, 'https://admin.default.com:2368/ghost/?test=true').should.be.true();
+                res.set.called.should.be.true();
+                done();
             });
 
-            host = 'default.com:2368';
-            res.isAdmin = true;
+            it('original url has search params', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368',
+                    adminUrl: 'https://admin.default.com:2368'
+                }));
 
-            req.originalUrl = '/ghost';
-            req.query = {
-                test: true
-            };
+                host = 'default.com:2368';
 
-            urlRedirects(req, res, next);
-            next.called.should.be.false();
-            res.redirect.calledWith(301, 'https://admin.default.com:2368/ghost/?test=true').should.be.true();
-            res.set.called.should.be.true();
-            done();
-        });
+                req.originalUrl = '/ghost/something?a=b';
+                req.query = {
+                    a: 'b'
+                };
 
-        it('original url has search params', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368',
-                admin: {
-                    url: 'https://admin.default.com:2368'
-                }
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.false();
+                res.redirect.calledWith(301, 'https://admin.default.com:2368/ghost/something/?a=b').should.be.true();
+                res.set.called.should.be.true();
+                done();
             });
 
-            host = 'default.com:2368';
-            res.isAdmin = true;
+            it('ensure redirect loop won\'t happen', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368',
+                    adminUrl: 'https://default.com:2368'
+                }));
 
-            req.originalUrl = '/ghost/something?a=b';
-            req.query = {
-                a: 'b'
-            };
+                host = 'default.com:2368';
 
-            urlRedirects(req, res, next);
-            next.called.should.be.false();
-            res.redirect.calledWith(301, 'https://admin.default.com:2368/ghost/something/?a=b').should.be.true();
-            res.set.called.should.be.true();
-            done();
-        });
+                req.originalUrl = '/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.false();
+                res.redirect.calledWith(301, 'https://default.com:2368/ghost/').should.be.true();
+                res.set.called.should.be.true();
 
-        it('ensure redirect loop won\'t happen', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368',
-                admin: {
-                    url: 'https://default.com:2368'
-                }
+                res.redirect.resetHistory();
+
+                req.secure = true;
+                redirect(req, res, next, getAdminRedirectUrl);
+                res.redirect.called.should.be.false();
+                res.set.calledOnce.should.be.true();
+                next.called.should.be.true();
+                done();
             });
-
-            host = 'default.com:2368';
-            res.isAdmin = true;
-
-            req.originalUrl = '/ghost';
-            urlRedirects(req, res, next);
-            next.called.should.be.false();
-            res.redirect.calledWith(301, 'https://default.com:2368/ghost/').should.be.true();
-            res.set.called.should.be.true();
-
-            res.redirect.reset();
-
-            req.secure = true;
-            urlRedirects(req, res, next);
-            res.redirect.called.should.be.false();
-            res.set.calledOnce.should.be.true();
-            next.called.should.be.true();
-            done();
         });
     });
 
     describe('expect no redirect', function () {
         it('blog is http, request is http', function (done) {
-            configUtils.set({
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({
                 url: 'http://default.com:2368/'
-            });
+            }));
 
             host = 'default.com:2368';
 
             req.originalUrl = '/';
-            urlRedirects(req, res, next);
+            redirect(req, res, next, getBlogRedirectUrl);
             next.called.should.be.true();
             res.redirect.called.should.be.false();
             res.set.called.should.be.false();
@@ -217,15 +236,15 @@ describe('UNIT: url redirects', function () {
         });
 
         it('blog is http, request is https', function (done) {
-            configUtils.set({
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({
                 url: 'http://default.com:2368/'
-            });
+            }));
 
             host = 'default.com:2368';
 
             req.originalUrl = '/';
             req.secure = true;
-            urlRedirects(req, res, next);
+            redirect(req, res, next, getBlogRedirectUrl);
             next.called.should.be.true();
             res.redirect.called.should.be.false();
             res.set.called.should.be.false();
@@ -233,15 +252,15 @@ describe('UNIT: url redirects', function () {
         });
 
         it('blog is http, request is https (trailing slash is missing)', function (done) {
-            configUtils.set({
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({
                 url: 'http://default.com:2368/'
-            });
+            }));
 
             host = 'default.com:2368/';
 
             req.originalUrl = '/';
             req.secure = true;
-            urlRedirects(req, res, next);
+            redirect(req, res, next, getBlogRedirectUrl);
             next.called.should.be.true();
             res.redirect.called.should.be.false();
             res.set.called.should.be.false();
@@ -249,15 +268,15 @@ describe('UNIT: url redirects', function () {
         });
 
         it('blog is https, request is https', function (done) {
-            configUtils.set({
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({
                 url: 'https://default.com:2368/'
-            });
+            }));
 
             host = 'default.com:2368';
 
             req.originalUrl = '/';
             req.secure = true;
-            urlRedirects(req, res, next);
+            redirect(req, res, next, getBlogRedirectUrl);
             next.called.should.be.true();
             res.redirect.called.should.be.false();
             res.set.called.should.be.false();
@@ -266,92 +285,86 @@ describe('UNIT: url redirects', function () {
         });
 
         it('blog host is !== request host', function (done) {
-            configUtils.set({
+            urlRedirects.__set__('urlUtils', urlUtils.getInstance({
                 url: 'https://default.com'
-            });
+            }));
 
             host = 'localhost:2368';
 
             req.originalUrl = '/';
             req.secure = true;
-            urlRedirects(req, res, next);
+            redirect(req, res, next, getBlogRedirectUrl);
             next.called.should.be.true();
             res.redirect.called.should.be.false();
             res.set.called.should.be.false();
             done();
         });
 
-        it('admin is blog url and http, requester is http', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368'
+        describe(`admin redirects`, function () {
+            it('admin is blog url and http, requester is http', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368'
+                }));
+
+                host = 'default.com:2368';
+
+                req.originalUrl = '/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.true();
+                res.redirect.called.should.be.false();
+                res.set.called.should.be.false();
+                done();
             });
 
-            host = 'default.com:2368';
-            res.isAdmin = true;
+            it('admin request, no custom admin.url configured', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://default.com:2368'
+                }));
 
-            req.originalUrl = '/ghost';
-            urlRedirects(req, res, next);
-            next.called.should.be.true();
-            res.redirect.called.should.be.false();
-            res.set.called.should.be.false();
-            done();
-        });
+                host = 'localhost:2368';
 
-        it('admin request, no custom admin.url configured', function (done) {
-            configUtils.set({
-                url: 'http://default.com:2368'
+                req.originalUrl = '/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+                next.called.should.be.true();
+                res.redirect.called.should.be.false();
+                res.set.called.should.be.false();
+                done();
             });
 
-            host = 'localhost:2368';
-            res.isAdmin = true;
+            it('url and admin url are different, protocol is different, request is not secure', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://blog.ghost.org',
+                    adminUrl: 'http://something.com'
+                }));
 
-            req.originalUrl = '/ghost';
-            urlRedirects(req, res, next);
-            next.called.should.be.true();
-            res.redirect.called.should.be.false();
-            res.set.called.should.be.false();
-            done();
-        });
+                host = 'something.com';
+                req.secure = false;
 
-        it('url and admin url are different, protocol is different, request is not secure', function (done) {
-            configUtils.set({
-                url: 'http://blog.ghost.org',
-                admin: {
-                    url: 'http://something.com'
-                }
+                req.originalUrl = '/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+                res.redirect.called.should.be.false();
+                res.set.called.should.be.false();
+                next.called.should.be.true();
+                done();
             });
 
-            host = 'something.com';
-            res.isAdmin = true;
-            req.secure = false;
+            it('url and admin url are different, protocol is different, request is secure', function (done) {
+                urlRedirects.__set__('urlUtils', urlUtils.getInstance({
+                    url: 'http://blog.ghost.org',
+                    adminUrl: 'http://something.com'
+                }));
 
-            req.originalUrl = '/ghost';
-            urlRedirects(req, res, next);
-            res.redirect.called.should.be.false();
-            res.set.called.should.be.false();
-            next.called.should.be.true();
-            done();
-        });
+                host = 'something.com';
+                req.secure = true;
 
-        it('url and admin url are different, protocol is different, request is secure', function (done) {
-            configUtils.set({
-                url: 'http://blog.ghost.org',
-                admin: {
-                    url: 'http://something.com'
-                }
+                req.originalUrl = '/ghost';
+                redirect(req, res, next, getAdminRedirectUrl);
+
+                res.redirect.called.should.be.false();
+                res.set.called.should.be.false();
+                next.called.should.be.true();
+                done();
             });
-
-            host = 'something.com';
-            res.isAdmin = true;
-            req.secure = true;
-
-            req.originalUrl = '/ghost';
-            urlRedirects(req, res, next);
-
-            res.redirect.called.should.be.false();
-            res.set.called.should.be.false();
-            next.called.should.be.true();
-            done();
         });
     });
 });

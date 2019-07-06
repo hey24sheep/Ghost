@@ -1,7 +1,10 @@
-var hr = require('./hr'),
-    html = require('./html'),
-    image = require('./image'),
-    markdown = require('./markdown'),
-    cardMarkdown = require('./card-markdown');
-
-module.exports = [hr, html, image, markdown, cardMarkdown];
+module.exports = [
+    require('./card-markdown'),
+    require('./code'),
+    require('./embed'),
+    require('./hr'),
+    require('./html'),
+    require('./image'),
+    require('./markdown'),
+    require('./gallery')
+];

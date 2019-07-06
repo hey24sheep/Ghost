@@ -1,39 +1,32 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
-
-// Stuff we are testing
-    helpers = require('../../../server/helpers'),
-    proxy = require('../../../server/helpers/proxy'),
-    settingsCache = proxy.settingsCache,
-
-    sandbox = sinon.sandbox.create();
+    helpers = require('../../../frontend/helpers'),
+    proxy = require('../../../frontend/helpers/proxy'),
+    settingsCache = proxy.settingsCache;
 
 describe('{{ghost_foot}} helper', function () {
     var settingsCacheStub;
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     beforeEach(function () {
-        settingsCacheStub = sandbox.stub(settingsCache, 'get');
+        settingsCacheStub = sinon.stub(settingsCache, 'get');
     });
 
-    it('outputs global injected code', function (done) {
+    it('outputs global injected code', function () {
         settingsCacheStub.withArgs('ghost_foot').returns('<script>var test = \'I am a variable!\'</script>');
 
-        helpers.ghost_foot({data: {}}).then(function (rendered) {
-            should.exist(rendered);
-            rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
-
-            done();
-        }).catch(done);
+        const rendered = helpers.ghost_foot({data: {}});
+        should.exist(rendered);
+        rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
     });
 
-    it('outputs post injected code', function (done) {
+    it('outputs post injected code', function () {
         settingsCacheStub.withArgs('ghost_foot').returns('<script>var test = \'I am a variable!\'</script>');
 
-        helpers.ghost_foot({
+        const rendered = helpers.ghost_foot({
             data: {
                 root: {
                     post: {
@@ -41,19 +34,16 @@ describe('{{ghost_foot}} helper', function () {
                     }
                 }
             }
-        }).then(function (rendered) {
-            should.exist(rendered);
-            rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
-            rendered.string.should.match(/post-codeinjection/);
-
-            done();
-        }).catch(done);
+        });
+        should.exist(rendered);
+        rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
+        rendered.string.should.match(/post-codeinjection/);
     });
 
-    it('handles post injected code being null', function (done) {
+    it('handles post injected code being null', function () {
         settingsCacheStub.withArgs('ghost_foot').returns('<script>var test = \'I am a variable!\'</script>');
 
-        helpers.ghost_foot({
+        const rendered = helpers.ghost_foot({
             data: {
                 root: {
                     post: {
@@ -61,19 +51,16 @@ describe('{{ghost_foot}} helper', function () {
                     }
                 }
             }
-        }).then(function (rendered) {
-            should.exist(rendered);
-            rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
-            rendered.string.should.not.match(/post-codeinjection/);
-
-            done();
-        }).catch(done);
+        });
+        should.exist(rendered);
+        rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
+        rendered.string.should.not.match(/post-codeinjection/);
     });
 
-    it('handles post injected code being empty', function (done) {
+    it('handles post injected code being empty', function () {
         settingsCacheStub.withArgs('ghost_foot').returns('<script>var test = \'I am a variable!\'</script>');
 
-        helpers.ghost_foot({
+        const rendered = helpers.ghost_foot({
             data: {
                 root: {
                     post: {
@@ -81,34 +68,25 @@ describe('{{ghost_foot}} helper', function () {
                     }
                 }
             }
-        }).then(function (rendered) {
-            should.exist(rendered);
-            rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
-            rendered.string.should.not.match(/post-codeinjection/);
-
-            done();
-        }).catch(done);
+        });
+        should.exist(rendered);
+        rendered.string.should.match(/<script>var test = 'I am a variable!'<\/script>/);
+        rendered.string.should.not.match(/post-codeinjection/);
     });
 
-    it('handles global empty code injection', function (done) {
+    it('handles global empty code injection', function () {
         settingsCacheStub.withArgs('ghost_foot').returns('');
 
-        helpers.ghost_foot({data: {}}).then(function (rendered) {
-            should.exist(rendered);
-            rendered.string.should.eql('');
-
-            done();
-        }).catch(done);
+        const rendered = helpers.ghost_foot({data: {}});
+        should.exist(rendered);
+        rendered.string.should.eql('');
     });
 
-    it('handles global undefined code injection', function (done) {
+    it('handles global undefined code injection', function () {
         settingsCacheStub.withArgs('ghost_foot').returns(undefined);
 
-        helpers.ghost_foot({data: {}}).then(function (rendered) {
-            should.exist(rendered);
-            rendered.string.should.eql('');
-
-            done();
-        }).catch(done);
+        const rendered = helpers.ghost_foot({data: {}});
+        should.exist(rendered);
+        rendered.string.should.eql('');
     });
 });

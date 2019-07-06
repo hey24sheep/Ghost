@@ -1,41 +1,32 @@
-var debug = require('ghost-ignition').debug('blog'),
-    path = require('path'),
-    express = require('express'),
+const debug = require('ghost-ignition').debug('web:site:app');
+const path = require('path');
+const express = require('express');
 
-    // App requires
-    config = require('../../config'),
-    constants = require('../../lib/constants'),
-    storage = require('../../adapters/storage'),
-    urlService = require('../../services/url'),
+// App requires
+const config = require('../../config');
+const apps = require('../../services/apps');
+const constants = require('../../lib/constants');
+const storage = require('../../adapters/storage');
+const urlService = require('../../../frontend/services/url');
+const urlUtils = require('../../../server/lib/url-utils');
+const sitemapHandler = require('../../../frontend/services/sitemap/handler');
+const themeMiddleware = require('../../../frontend/services/themes').middleware;
+const membersService = require('../../services/members');
+const siteRoutes = require('./routes');
+const shared = require('../shared');
 
-    // This should probably be an internal app
-    sitemapHandler = require('../../data/xml/sitemap/handler'),
+const STATIC_IMAGE_URL_PREFIX = `/${urlUtils.STATIC_IMAGE_URL_PREFIX}`;
 
-    // Route Service
-    siteRoutes = require('./routes'),
+let router;
 
-    // Global/shared middleware
-    cacheControl = require('../middleware/cache-control'),
-    errorHandler = require('../middleware/error-handler'),
-    frontendClient = require('../middleware/frontend-client'),
-    maintenance = require('../middleware/maintenance'),
-    prettyURLs = require('../middleware/pretty-urls'),
-    urlRedirects = require('../middleware/url-redirects'),
+function SiteRouter(req, res, next) {
+    router(req, res, next);
+}
 
-    // local middleware
-    servePublicFile = require('../middleware/serve-public-file'),
-    staticTheme = require('../middleware/static-theme'),
-    customRedirects = require('../middleware/custom-redirects'),
-    serveFavicon = require('../middleware/serve-favicon'),
-    adminRedirects = require('../middleware/admin-redirects'),
-
-    // middleware for themes
-    themeMiddleware = require('../../services/themes').middleware;
-
-module.exports = function setupSiteApp() {
+module.exports = function setupSiteApp(options = {}) {
     debug('Site setup start');
 
-    var siteApp = express();
+    const siteApp = express();
 
     // ## App - specific code
     // set the view engine
@@ -43,42 +34,96 @@ module.exports = function setupSiteApp() {
 
     // you can extend Ghost with a custom redirects file
     // see https://github.com/TryGhost/Ghost/issues/7707
-    customRedirects.use(siteApp);
+    shared.middlewares.customRedirects.use(siteApp);
 
     // More redirects
-    siteApp.use(adminRedirects());
+    siteApp.use(shared.middlewares.adminRedirects());
 
     // force SSL if blog url is set to https. The redirects handling must happen before asset and page routing,
     // otherwise we serve assets/pages with http. This can cause mixed content warnings in the admin client.
-    siteApp.use(urlRedirects);
+    siteApp.use(shared.middlewares.urlRedirects);
 
     // Static content/assets
     // @TODO make sure all of these have a local 404 error handler
     // Favicon
-    siteApp.use(serveFavicon());
+    siteApp.use(shared.middlewares.serveFavicon());
     // /public/ghost-sdk.js
-    siteApp.use(servePublicFile('public/ghost-sdk.js', 'application/javascript', constants.ONE_HOUR_S));
-    siteApp.use(servePublicFile('public/ghost-sdk.min.js', 'application/javascript', constants.ONE_YEAR_S));
+    siteApp.use(shared.middlewares.servePublicFile('public/ghost-sdk.js', 'application/javascript', constants.ONE_HOUR_S));
+    siteApp.use(shared.middlewares.servePublicFile('public/ghost-sdk.min.js', 'application/javascript', constants.ONE_YEAR_S));
+
+    // /public/members.js
+    siteApp.get('/public/members-theme-bindings.js',
+        shared.middlewares.labs('members'),
+        shared.middlewares.servePublicFile.createPublicFileMiddleware(
+            'public/members-theme-bindings.js',
+            'application/javascript',
+            constants.ONE_HOUR_S
+        )
+    );
+    siteApp.get('/public/members.js',
+        shared.middlewares.labs('members'),
+        shared.middlewares.servePublicFile.createPublicFileMiddleware(
+            'public/members.js',
+            'application/javascript',
+            constants.ONE_HOUR_S
+        )
+    );
+
     // Serve sitemap.xsl file
-    siteApp.use(servePublicFile('sitemap.xsl', 'text/xsl', constants.ONE_DAY_S));
+    siteApp.use(shared.middlewares.servePublicFile('sitemap.xsl', 'text/xsl', constants.ONE_DAY_S));
 
     // Serve stylesheets for default templates
-    siteApp.use(servePublicFile('public/ghost.css', 'text/css', constants.ONE_HOUR_S));
-    siteApp.use(servePublicFile('public/ghost.min.css', 'text/css', constants.ONE_YEAR_S));
+    siteApp.use(shared.middlewares.servePublicFile('public/ghost.css', 'text/css', constants.ONE_HOUR_S));
+    siteApp.use(shared.middlewares.servePublicFile('public/ghost.min.css', 'text/css', constants.ONE_YEAR_S));
 
     // Serve images for default templates
-    siteApp.use(servePublicFile('public/404-ghost@2x.png', 'png', constants.ONE_HOUR_S));
-    siteApp.use(servePublicFile('public/404-ghost.png', 'png', constants.ONE_HOUR_S));
+    siteApp.use(shared.middlewares.servePublicFile('public/404-ghost@2x.png', 'png', constants.ONE_HOUR_S));
+    siteApp.use(shared.middlewares.servePublicFile('public/404-ghost.png', 'png', constants.ONE_HOUR_S));
 
     // Serve blog images using the storage adapter
-    siteApp.use('/' + urlService.utils.STATIC_IMAGE_URL_PREFIX, storage.getStorage().serve());
+    siteApp.use(STATIC_IMAGE_URL_PREFIX, shared.middlewares.image.handleImageSizes, storage.getStorage().serve());
 
     // @TODO find this a better home
     // We do this here, at the top level, because helpers require so much stuff.
     // Moving this to being inside themes, where it probably should be requires the proxy to be refactored
     // Else we end up with circular dependencies
-    require('../../helpers').loadCoreHelpers();
+    require('../../../frontend/helpers').loadCoreHelpers();
     debug('Helpers done');
+
+    // @TODO only loads this stuff if members is enabled
+    // Set req.member & res.locals.member if a cookie is set
+    siteApp.post('/members/ssr', shared.middlewares.labs.members, function (req, res) {
+        membersService.api.ssr.exchangeTokenForSession(req, res).then(() => {
+            res.writeHead(200);
+            res.end();
+        }).catch((err) => {
+            res.writeHead(err.statusCode);
+            res.end(err.message);
+        });
+    });
+    siteApp.delete('/members/ssr', shared.middlewares.labs.members, function (req, res) {
+        membersService.api.ssr.deleteSession(req, res).then(() => {
+            res.writeHead(204);
+            res.end();
+        }).catch((err) => {
+            res.writeHead(err.statusCode);
+            res.end(err.message);
+        });
+    });
+    siteApp.use(function (req, res, next) {
+        membersService.api.ssr.getMemberDataFromSession(req, res).then((member) => {
+            req.member = member;
+            next();
+        }).catch(() => {
+            // @TODO log error?
+            req.member = null;
+            next();
+        });
+    });
+    siteApp.use(function (req, res, next) {
+        res.locals.member = req.member;
+        next();
+    });
 
     // Theme middleware
     // This should happen AFTER any shared assets are served, as it only changes things to do with templates
@@ -88,17 +133,18 @@ module.exports = function setupSiteApp() {
     debug('Themes done');
 
     // Theme static assets/files
-    siteApp.use(staticTheme());
+    siteApp.use(shared.middlewares.staticTheme());
     debug('Static content done');
 
     // Serve robots.txt if not found in theme
-    siteApp.use(servePublicFile('robots.txt', 'text/plain', constants.ONE_HOUR_S));
+    siteApp.use(shared.middlewares.servePublicFile('robots.txt', 'text/plain', constants.ONE_HOUR_S));
 
     // setup middleware for internal apps
     // @TODO: refactor this to be a proper app middleware hook for internal & external apps
-    config.get('apps:internal').forEach(function (appName) {
-        var app = require(path.join(config.get('paths').internalAppPath, appName));
-        if (app.hasOwnProperty('setupMiddleware')) {
+    config.get('apps:internal').forEach((appName) => {
+        const app = require(path.join(config.get('paths').internalAppPath, appName));
+
+        if (Object.prototype.hasOwnProperty.call(app, 'setupMiddleware')) {
             app.setupMiddleware(siteApp);
         }
     });
@@ -108,32 +154,56 @@ module.exports = function setupSiteApp() {
     debug('Internal apps done');
 
     // send 503 error page in case of maintenance
-    siteApp.use(maintenance);
+    siteApp.use(shared.middlewares.maintenance);
 
     // Add in all trailing slashes & remove uppercase
     // must happen AFTER asset loading and BEFORE routing
-    siteApp.use(prettyURLs);
+    siteApp.use(shared.middlewares.prettyUrls);
 
     // ### Caching
-    // Site frontend is cacheable
-    siteApp.use(cacheControl('public'));
+    // Site frontend is cacheable UNLESS request made by a member
+    const publicCacheControl = shared.middlewares.cacheControl('public');
+    const privateCacheControl = shared.middlewares.cacheControl('private');
+    siteApp.use(function (req, res, next) {
+        if (req.member) {
+            return privateCacheControl(req, res, next);
+        } else {
+            return publicCacheControl(req, res, next);
+        }
+    });
 
     // Fetch the frontend client into res.locals
-    siteApp.use(frontendClient);
+    siteApp.use(shared.middlewares.frontendClient);
 
     debug('General middleware done');
 
-    // @temporary
-    require('../../services/channels/Channels2');
+    router = siteRoutes(options);
+    Object.setPrototypeOf(SiteRouter, router);
 
     // Set up Frontend routes (including private blogging routes)
-    siteApp.use(siteRoutes());
+    siteApp.use(SiteRouter);
 
     // ### Error handlers
-    siteApp.use(errorHandler.pageNotFound);
-    siteApp.use(errorHandler.handleThemeResponse);
+    siteApp.use(shared.middlewares.errorHandler.pageNotFound);
+    siteApp.use(shared.middlewares.errorHandler.handleThemeResponse);
 
     debug('Site setup end');
 
     return siteApp;
+};
+
+module.exports.reload = () => {
+    // https://github.com/expressjs/express/issues/2596
+    router = siteRoutes({start: true});
+    Object.setPrototypeOf(SiteRouter, router);
+
+    // re-initialse apps (register app routers, because we have re-initialised the site routers)
+    apps.init();
+
+    // connect routers and resources again
+    urlService.queue.start({
+        event: 'init',
+        tolerance: 100,
+        requiredSubscriberCount: 1
+    });
 };

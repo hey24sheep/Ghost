@@ -1,11 +1,11 @@
-var should = require('should'), // jshint ignore:line
-    card = require('../../../../../server/lib/mobiledoc/cards/html'),
-    SimpleDom = require('simple-dom'),
-    opts;
+const should = require('should');
+const card = require('../../../../../server/lib/mobiledoc/cards/html');
+const SimpleDom = require('simple-dom');
+const serializer = new SimpleDom.HTMLSerializer(SimpleDom.voidMap);
 
 describe('HTML card', function () {
     it('HTML Card renders', function () {
-        opts = {
+        let opts = {
             env: {
                 dom: new SimpleDom.Document()
             },
@@ -14,12 +14,11 @@ describe('HTML card', function () {
             }
         };
 
-        var serializer = new SimpleDom.HTMLSerializer([]);
-        serializer.serialize(card.render(opts)).should.match('<div class="kg-card-html"><h1>HEADING</h1><p>PARAGRAPH</p></div>');
+        serializer.serialize(card.render(opts)).should.eql('<!--kg-card-begin: html--><h1>HEADING</h1><p>PARAGRAPH</p><!--kg-card-end: html-->');
     });
 
     it('Plain content renders', function () {
-        opts = {
+        let opts = {
             env: {
                 dom: new SimpleDom.Document()
             },
@@ -28,12 +27,11 @@ describe('HTML card', function () {
             }
         };
 
-        var serializer = new SimpleDom.HTMLSerializer([]);
-        serializer.serialize(card.render(opts)).should.match('<div class="kg-card-html">CONTENT</div>');
+        serializer.serialize(card.render(opts)).should.eql('<!--kg-card-begin: html-->CONTENT<!--kg-card-end: html-->');
     });
 
     it('Invalid HTML returns', function () {
-        opts = {
+        let opts = {
             env: {
                 dom: new SimpleDom.Document()
             },
@@ -42,22 +40,19 @@ describe('HTML card', function () {
             }
         };
 
-        var serializer = new SimpleDom.HTMLSerializer([]);
-        serializer.serialize(card.render(opts)).should.match('<div class="kg-card-html"><h1>HEADING<</div>');
+        serializer.serialize(card.render(opts)).should.eql('<!--kg-card-begin: html--><h1>HEADING<<!--kg-card-end: html-->');
     });
 
-    it('Caption renders', function () {
-        opts = {
+    it('Renders nothing when payload is undefined', function () {
+        let opts = {
             env: {
                 dom: new SimpleDom.Document()
             },
             payload: {
-                html: '<iframe src="http://vimeo.com"></iframe>',
-                caption: 'Embed caption test'
+                html: undefined
             }
         };
 
-        var serializer = new SimpleDom.HTMLSerializer([]);
-        serializer.serialize(card.render(opts)).should.match('<div class="kg-card-html"><iframe src="http://vimeo.com"></iframe><p>Embed caption test</p></div>');
+        serializer.serialize(card.render(opts)).should.eql('');
     });
 });

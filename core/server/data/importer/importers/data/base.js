@@ -1,5 +1,3 @@
-'use strict';
-
 const debug = require('ghost-ignition').debug('importer:base'),
     _ = require('lodash'),
     Promise = require('bluebird'),
@@ -19,13 +17,6 @@ class Base {
             allowDuplicates: true,
             returnDuplicates: true,
             showNotFoundWarning: true
-        };
-
-        this.legacyKeys = {};
-        this.legacyMapper = (item) => {
-            return _.mapKeys(item, (value, key) => {
-                return this.legacyKeys[key] || key;
-            });
         };
 
         this.dataKeyToImport = options.dataKeyToImport;
@@ -192,12 +183,17 @@ class Base {
         let userReferenceProblems = {};
 
         const handleObject = (obj, key) => {
-            if (!obj.hasOwnProperty(key)) {
+            if (!Object.prototype.hasOwnProperty.call(obj, key)) {
                 return;
             }
 
             // CASE: you import null, fallback to owner
             if (!obj[key]) {
+                // Exception: If the imported post is a draft published_by will be null. Not a userReferenceProblem.
+                if (key === 'published_by' && obj.status === 'draft') {
+                    return;
+                }
+
                 if (!userReferenceProblems[obj.id]) {
                     userReferenceProblems[obj.id] = {obj: _.cloneDeep(obj), keys: []};
                 }
@@ -276,6 +272,9 @@ class Base {
             }
         };
 
+        /**
+         * @deprecated: x_by fields (https://github.com/TryGhost/Ghost/issues/10286)
+         */
         // Iterate over all possible user relations
         _.each(this.dataToImport, (obj) => {
             _.each([
@@ -303,7 +302,7 @@ class Base {
 
         let ops = [];
 
-        _.each(this.dataToImport, (obj) => {
+        _.each(this.dataToImport, (obj, index) => {
             ops.push(() => {
                 return models[this.modelName].add(obj, options)
                     .then((importedModel) => {
@@ -319,10 +318,12 @@ class Base {
                         this.importedData.push({
                             id: importedModel.id,
                             slug: importedModel.get('slug'),
+                            originalSlug: obj.slug,
                             email: importedModel.get('email')
                         });
 
-                        return importedModel;
+                        importedModel = null;
+                        this.dataToImport.splice(index, 1);
                     })
                     .catch((err) => {
                         return this.handleError(err, obj);
@@ -338,7 +339,11 @@ class Base {
          *
          *       Promise.map(.., {concurrency: Int}) was not really improving the end performance for me.
          */
-        return sequence(ops);
+        return sequence(ops).then((response) => {
+            this.dataToImport = null;
+            ops = null;
+            return response;
+        });
     }
 }
 

@@ -1,12 +1,9 @@
-'use strict';
-
-// jshint unused: false
 const _ = require('lodash');
 const Promise = require('bluebird');
 const should = require('should');
 const sinon = require('sinon');
-const Queue = require('../../../../server/services/url/Queue');
-const sandbox = sinon.sandbox.create();
+const common = require('../../../../server/lib/common');
+const Queue = require('../../../../frontend/services/url/Queue');
 
 describe('Unit: services/url/Queue', function () {
     let queue;
@@ -14,11 +11,12 @@ describe('Unit: services/url/Queue', function () {
     beforeEach(function () {
         queue = new Queue();
 
-        sandbox.spy(queue, 'run');
+        sinon.spy(queue, 'run');
+        sinon.stub(common.logging, 'error');
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     it('fn: register', function () {
@@ -132,31 +130,19 @@ describe('Unit: services/url/Queue', function () {
             });
         });
 
-        it('subscriber throws error', function (done) {
-            let i = 0;
-            let notified = 0;
-
-            queue.addListener('ended', function (event) {
-                event.should.eql('nachos');
-                queue.run.callCount.should.eql(3);
-                notified.should.eql(1);
-                done();
-            });
-
+        it('subscriber throws error', function () {
             queue.register({
                 event: 'nachos'
             }, function () {
-                if (i === 0) {
-                    i = i + 1;
-                    throw new Error('oops');
-                }
-
-                notified = notified + 1;
+                throw new Error('oops');
             });
 
             queue.start({
                 event: 'nachos'
             });
+
+            common.logging.error.calledOnce.should.be.true();
+            queue.toNotify['nachos'].notified.length.should.eql(0);
         });
     });
 
@@ -241,6 +227,37 @@ describe('Unit: services/url/Queue', function () {
                 event: 'nachos',
                 tolerance: 20,
                 timeoutInMS: 20
+            });
+        });
+
+        it('late subscribers', function (done) {
+            let notified = 0;
+            let called = 0;
+
+            queue.addListener('ended', function (event) {
+                event.should.eql('nachos');
+                notified.should.eql(1);
+                called.should.eql(1);
+                done();
+            });
+
+            setTimeout(function () {
+                queue.register({
+                    event: 'nachos',
+                    tolerance: 100,
+                    timeoutInMS: 20,
+                    requiredSubscriberCount: 1
+                }, function () {
+                    called = called + 1;
+                    notified = notified + 1;
+                });
+            }, 500);
+
+            queue.start({
+                event: 'nachos',
+                tolerance: 60,
+                timeoutInMS: 20,
+                requiredSubscriberCount: 1
             });
         });
     });

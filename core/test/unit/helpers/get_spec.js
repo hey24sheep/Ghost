@@ -3,29 +3,30 @@ var should = require('should'),
     Promise = require('bluebird'),
 
     // Stuff we are testing
-    helpers = require('../../../server/helpers'),
+    helpers = require('../../../frontend/helpers'),
     models = require('../../../server/models'),
     api = require('../../../server/api'),
 
-    labs = require('../../../server/services/labs'),
-
-    sandbox = sinon.sandbox.create();
+    labs = require('../../../server/services/labs');
 
 describe('{{#get}} helper', function () {
     var fn, inverse, labsStub;
+    let locals = {};
 
     before(function () {
         models.init();
     });
 
     beforeEach(function () {
-        fn = sandbox.spy();
-        inverse = sandbox.spy();
-        labsStub = sandbox.stub(labs, 'isSet').returns(true);
+        fn = sinon.spy();
+        inverse = sinon.spy();
+        labsStub = sinon.stub(labs, 'isSet').returns(true);
+
+        locals = {root: {_locals: {apiVersion: 'v0.1'}}, globalProp: {foo: 'bar'}};
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     it('errors correctly if labs flag not set', function (done) {
@@ -34,7 +35,7 @@ describe('{{#get}} helper', function () {
         helpers.get.call(
             {},
             'posts',
-            {hash: {}, fn: fn, inverse: inverse}
+            {hash: {}, data: locals, fn: fn, inverse: inverse}
         ).then(function (result) {
             labsStub.calledOnce.should.be.true();
             fn.called.should.be.false();
@@ -44,16 +45,16 @@ describe('{{#get}} helper', function () {
             result.should.be.a.Function();
             result().should.be.an.Object().with.property(
                 'string',
-                '<script>console.error("The {{get}} helper is not available. ' +
-                'The Public API flag must be enabled in labs if you wish to use the {{get}} helper. ' +
-                'See https://help.ghost.org/hc/en-us/articles/115000301672-Public-API-Beta");</script>'
+                '<script>console.error("The {{#get}} helper requires your theme to have API access. ' +
+                'Please enable the v2 API via your theme\'s package.json file. ' +
+                'See https://docs.ghost.org/api/handlebars-themes/packagejson/");</script>'
             );
 
             done();
         }).catch(done);
     });
 
-    describe('posts', function () {
+    describe('posts v0.1', function () {
         var browsePostsStub, readPostsStub, readTagsStub, readUsersStub, testPostsArr = [
                 {id: 1, title: 'Test Post 1', author: {slug: 'cameron'}},
                 {id: 2, title: 'Test Post 2', author: {slug: 'cameron'}, featured: true},
@@ -63,10 +64,10 @@ describe('{{#get}} helper', function () {
             meta = {pagination: {}};
 
         beforeEach(function () {
-            browsePostsStub = sandbox.stub(api.posts, 'browse');
-            readPostsStub = sandbox.stub(api.posts, 'read');
-            readTagsStub = sandbox.stub(api.tags, 'read').returns(new Promise.resolve({tags: []}));
-            readUsersStub = sandbox.stub(api.users, 'read').returns(new Promise.resolve({users: []}));
+            browsePostsStub = sinon.stub(api["v0.1"].posts, 'browse');
+            readPostsStub = sinon.stub(api["v0.1"].posts, 'read');
+            readTagsStub = sinon.stub(api["v0.1"].tags, 'read').returns(new Promise.resolve({tags: []}));
+            readUsersStub = sinon.stub(api["v0.1"].users, 'read').returns(new Promise.resolve({users: []}));
 
             browsePostsStub.returns(new Promise.resolve({posts: testPostsArr, meta: meta}));
             browsePostsStub.withArgs({limit: '3'}).returns(new Promise.resolve({
@@ -85,7 +86,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {}, fn: fn, inverse: inverse}
+                {hash: {}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 labsStub.calledOnce.should.be.true();
 
@@ -103,7 +104,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {}, fn: fn, inverse: inverse}
+                {hash: {}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.firstCall.args[0].pagination.should.be.an.Object();
                 fn.firstCall.args[0].meta.should.be.an.Object();
@@ -118,7 +119,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {limit: '1'}, fn: fn, inverse: inverse}
+                {hash: {limit: '1'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 should.not.exist(fn.firstCall.args[0].pagination);
                 should.not.exist(fn.firstCall.args[0].meta);
@@ -132,7 +133,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {limit: '3'}, fn: fn, inverse: inverse}
+                {hash: {limit: '3'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
@@ -148,7 +149,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {limit: '1'}, fn: fn, inverse: inverse}
+                {hash: {limit: '1'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
@@ -164,7 +165,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {limit: '1'}, fn: fn, inverse: inverse}
+                {hash: {limit: '1'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
@@ -180,7 +181,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {filter: 'tags:test'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'tags:test'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
@@ -195,7 +196,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {filter: 'author:cameron'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'author:cameron'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
@@ -210,7 +211,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {filter: 'featured:true'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'featured:true'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
@@ -225,7 +226,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {id: '2'}, fn: fn, inverse: inverse}
+                {hash: {id: '2'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
@@ -241,11 +242,127 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {filter: 'tags:none'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'tags:none'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.calledOnce.should.be.true();
                 fn.firstCall.args[0].should.be.an.Object().with.property('posts');
                 fn.firstCall.args[0].posts.should.have.lengthOf(0);
+                inverse.called.should.be.false();
+
+                done();
+            }).catch(done);
+        });
+    });
+
+    describe('users v0.1', function () {
+        let browseUsersStub;
+        const meta = {pagination: {}};
+
+        beforeEach(function () {
+            browseUsersStub = sinon.stub(api["v0.1"].users, 'browse');
+            browseUsersStub.returns(new Promise.resolve({users: [], meta: meta}));
+        });
+
+        it('browse users v0.1', function (done) {
+            helpers.get.call(
+                {},
+                'users',
+                {hash: {}, data: locals, fn: fn, inverse: inverse}
+            ).then(function () {
+                labsStub.calledOnce.should.be.true();
+
+                fn.called.should.be.true();
+                fn.firstCall.args[0].should.be.an.Object().with.property('users');
+                fn.firstCall.args[0].users.should.eql([]);
+                inverse.called.should.be.false();
+
+                done();
+            }).catch(done);
+        });
+    });
+
+    describe('authors v0.1', function () {
+        let browseUsersStub;
+        const meta = {pagination: {}};
+
+        beforeEach(function () {
+            browseUsersStub = sinon.stub(api["v0.1"].users, 'browse');
+            browseUsersStub.returns(new Promise.resolve({users: [], meta: meta}));
+        });
+
+        it('browse users v0.1', function (done) {
+            helpers.get.call(
+                {},
+                'authors',
+                {hash: {}, data: locals, fn: fn, inverse: inverse}
+            ).then(function () {
+                inverse.calledOnce.should.be.true();
+                should.exist(inverse.args[0][1].data.error);
+
+                done();
+            }).catch(done);
+        });
+    });
+
+    describe('users v2', function () {
+        let browseUsersStub;
+        const meta = {pagination: {}};
+
+        beforeEach(function () {
+            locals = {root: {_locals: {apiVersion: 'v2'}}};
+
+            browseUsersStub = sinon.stub(api["v2"], 'authorsPublic').get(() => {
+                return {
+                    browse: sinon.stub().resolves({authors: [], meta: meta})
+                };
+            });
+        });
+
+        it('browse users', function (done) {
+            helpers.get.call(
+                {},
+                'users',
+                {hash: {}, data: locals, fn: fn, inverse: inverse}
+            ).then(function () {
+                // We don't use the labs helper for v2
+                labsStub.calledOnce.should.be.false();
+
+                fn.called.should.be.true();
+                fn.firstCall.args[0].should.be.an.Object().with.property('authors');
+                fn.firstCall.args[0].authors.should.eql([]);
+                inverse.called.should.be.false();
+
+                done();
+            }).catch(done);
+        });
+    });
+
+    describe('authors v2', function () {
+        let browseUsersStub;
+        const meta = {pagination: {}};
+
+        beforeEach(function () {
+            locals = {root: {_locals: {apiVersion: 'v2'}}};
+
+            browseUsersStub = sinon.stub(api["v2"], 'authorsPublic').get(() => {
+                return {
+                    browse: sinon.stub().resolves({authors: [], meta: meta})
+                };
+            });
+        });
+
+        it('browse users', function (done) {
+            helpers.get.call(
+                {},
+                'authors',
+                {hash: {}, data: locals, fn: fn, inverse: inverse}
+            ).then(function () {
+                // We don't use the labs helper for v2
+                labsStub.calledOnce.should.be.false();
+
+                fn.called.should.be.true();
+                fn.firstCall.args[0].should.be.an.Object().with.property('authors');
+                fn.firstCall.args[0].authors.should.eql([]);
                 inverse.called.should.be.false();
 
                 done();
@@ -258,7 +375,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'magic',
-                {hash: {}, fn: fn, inverse: inverse}
+                {hash: {}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.called.should.be.false();
                 inverse.calledOnce.should.be.true();
@@ -274,7 +391,7 @@ describe('{{#get}} helper', function () {
             helpers.get.call(
                 {},
                 'posts',
-                {hash: {status: 'thing!'}, fn: fn, inverse: inverse}
+                {hash: {status: 'thing!'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 fn.called.should.be.false();
                 inverse.calledOnce.should.be.true();
@@ -289,7 +406,8 @@ describe('{{#get}} helper', function () {
         it('should show warning for call without any options', function (done) {
             helpers.get.call(
                 {},
-                'posts'
+                'posts',
+                {data: locals}
             ).then(function () {
                 fn.called.should.be.false();
                 inverse.called.should.be.false();
@@ -302,20 +420,20 @@ describe('{{#get}} helper', function () {
     describe('path resolution', function () {
         var browseStub, readStub,
             pubDate = new Date(),
-            data = {
+            resource = {
                 post: {id: 3, title: 'Test 3', author: {slug: 'cameron'}, tags: [{slug: 'test'}, {slug: 'magic'}], published_at: pubDate}
             };
 
         beforeEach(function () {
-            browseStub = sandbox.stub(api.posts, 'browse').returns(new Promise.resolve());
-            readStub = sandbox.stub(api.posts, 'read').returns(new Promise.resolve());
+            browseStub = sinon.stub(api["v0.1"].posts, 'browse').returns(new Promise.resolve());
+            readStub = sinon.stub(api["v0.1"].posts, 'read').returns(new Promise.resolve());
         });
 
         it('should resolve post.tags alias', function (done) {
             helpers.get.call(
-                data,
+                resource,
                 'posts',
-                {hash: {filter: 'tags:[{{post.tags}}]'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'tags:[{{post.tags}}]'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 browseStub.firstCall.args.should.be.an.Array().with.lengthOf(1);
                 browseStub.firstCall.args[0].should.be.an.Object().with.property('filter');
@@ -327,9 +445,9 @@ describe('{{#get}} helper', function () {
 
         it('should resolve post.author alias', function (done) {
             helpers.get.call(
-                data,
+                resource,
                 'posts',
-                {hash: {filter: 'author:{{post.author}}'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'author:{{post.author}}'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 browseStub.firstCall.args.should.be.an.Array().with.lengthOf(1);
                 browseStub.firstCall.args[0].should.be.an.Object().with.property('filter');
@@ -341,9 +459,9 @@ describe('{{#get}} helper', function () {
 
         it('should resolve basic path', function (done) {
             helpers.get.call(
-                data,
+                resource,
                 'posts',
-                {hash: {filter: 'id:-{{post.id}}'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'id:-{{post.id}}'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 browseStub.firstCall.args.should.be.an.Array().with.lengthOf(1);
                 browseStub.firstCall.args[0].should.be.an.Object().with.property('filter');
@@ -355,9 +473,9 @@ describe('{{#get}} helper', function () {
 
         it('should handle arrays the same as handlebars', function (done) {
             helpers.get.call(
-                data,
+                resource,
                 'posts',
-                {hash: {filter: 'tags:{{post.tags.[0].slug}}'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'tags:{{post.tags.[0].slug}}'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 browseStub.firstCall.args.should.be.an.Array().with.lengthOf(1);
                 browseStub.firstCall.args[0].should.be.an.Object().with.property('filter');
@@ -369,9 +487,9 @@ describe('{{#get}} helper', function () {
 
         it('should handle dates', function (done) {
             helpers.get.call(
-                data,
+                resource,
                 'posts',
-                {hash: {filter: "published_at:<='{{post.published_at}}'"}, fn: fn, inverse: inverse}
+                {hash: {filter: "published_at:<='{{post.published_at}}'"}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 browseStub.firstCall.args.should.be.an.Array().with.lengthOf(1);
                 browseStub.firstCall.args[0].should.be.an.Object().with.property('filter');
@@ -383,13 +501,27 @@ describe('{{#get}} helper', function () {
 
         it('should output nothing if path does not resolve', function (done) {
             helpers.get.call(
-                data,
+                resource,
                 'posts',
-                {hash: {filter: 'id:{{post.thing}}'}, fn: fn, inverse: inverse}
+                {hash: {filter: 'id:{{post.thing}}'}, data: locals, fn: fn, inverse: inverse}
             ).then(function () {
                 browseStub.firstCall.args.should.be.an.Array().with.lengthOf(1);
                 browseStub.firstCall.args[0].should.be.an.Object().with.property('filter');
                 browseStub.firstCall.args[0].filter.should.eql('id:');
+
+                done();
+            }).catch(done);
+        });
+
+        it('should resolve global props', function (done) {
+            helpers.get.call(
+                resource,
+                'posts',
+                {hash: {filter: 'slug:{{@globalProp.foo}}'}, data: locals, fn: fn, inverse: inverse}
+            ).then(function () {
+                browseStub.firstCall.args.should.be.an.Array().with.lengthOf(1);
+                browseStub.firstCall.args[0].should.be.an.Object().with.property('filter');
+                browseStub.firstCall.args[0].filter.should.eql('slug:bar');
 
                 done();
             }).catch(done);

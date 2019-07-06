@@ -1,59 +1,42 @@
+dist: xenial
 language: node_js
-# When changing node version also update it on lines 31 and 49.
 node_js:
-  - "8"
-  - "6"
-  - "4"
-
-sudo: false
-
-cache:
-  directories:
-    - node_modules
-
-addons:
-  apt:
-    sources:
-      - sourceline: 'deb https://dl.yarnpkg.com/debian/ stable main'
-        key_url: 'https://dl.yarnpkg.com/debian/pubkey.gpg'
-    packages:
-      - yarn
-
+- '12'
+- '10'
+- '8'
+cache: yarn
+services:
+- mysql
+# Don't run builds for renovate PRs
+if: NOT head_branch =~ ^renovate
 env:
-  global:
-    - GITHUB_OAUTH_KEY=003a44d58f12089d0c0261338298af3813330949
   matrix:
-    - DB=sqlite3 NODE_ENV=testing
-    - DB=mysql NODE_ENV=testing-mysql
-
+  - DB=sqlite3 NODE_ENV=testing
+  - DB=mysql NODE_ENV=testing-mysql
 matrix:
   include:
-    - node_js: "8"
-      env: TEST_SUITE=lint
+  - node_js: '10'
+    env: TEST_SUITE=lint
+  allow_failures:
+  - node_js: '12'
   fast_finish: true
-
-branches:
-  except:
-    - /^greenkeeper-.+$/
-
-before_install:
-  - if [ $DB == "mysql" ]; then mysql -e 'create database ghost_testing'; fi
-
 install:
-  - yarn
-  - if [ "$DB" == "sqlite3" ]; then yarn add --force sqlite3; fi # fix sqlite caching issues
-
-after_success:
-  - |
-      if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then
-        if [[ "$DB" = "sqlite3" && "$TRAVIS_NODE_VERSION" = "8" ]]; then
-          echo "Generate coverage..."
-          grunt coverage
-          npm install -g codeclimate-test-reporter
-          codeclimate-test-reporter < core/test/coverage/unit/lcov.info
-        else
-          echo "False DB and NODE_VERSION. No coverage generated."
-        fi
-      else
-        echo "This is a PR. No coverage generated."
-      fi
+- if [ "$TRAVIS_NODE_VERSION" == "12" ]; then yarn --ignore-engines; else yarn; fi
+before_script:
+- if [ $DB == "mysql" ]; then mysql -e 'create database ghost_testing'; fi
+- if [ "$DB" == "sqlite3" ]; then yarn add --ignore-engines --force sqlite3; fi
+script: |
+  if [ "$TEST_SUITE" == "lint" ]; then
+    yarn lint
+  elif [[ "$TRAVIS_PULL_REQUEST_BRANCH" =~ ^renovate || "$TRAVIS_EVENT_TYPE" == "cron" ]]; then
+    yarn ci:regression
+  else
+    yarn ci
+  fi
+notifications:
+  slack:
+    rooms:
+      - secure: KzvGpf6RFHgQ3BkppKM4OejFjJYxH60KkDDShet0a0v+j/03HF5Nx0S0Vl9O/F2dPt2qWvblKb3j9EKgB7RsoFSdZuOk7ijA9Duvn+p9RrLom0C9JxOA3ob065WAGyE0OGRm1P5H98loX/L+6oOHC4/qqGKXgz6gUdBtZBn/yo8=
+    on_success: change
+    on_failure: always
+    on_pull_requests: false

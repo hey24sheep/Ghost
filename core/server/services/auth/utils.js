@@ -4,7 +4,6 @@ var Promise = require('bluebird'),
     models = require('../../models'),
     security = require('../../lib/security'),
     constants = require('../../lib/constants'),
-    knex = require('../../data/db').knex,
     _private = {};
 
 /**
@@ -106,7 +105,7 @@ module.exports.createTokens = function createTokens(data, modelOptions) {
         return _private.handleTokenCreation(data, modelOptions);
     }
 
-    return knex.transaction(function (transaction) {
+    return models.Base.transaction(function (transaction) {
         modelOptions.transacting = transaction;
 
         return _private.handleTokenCreation(data, modelOptions);
@@ -133,6 +132,6 @@ module.exports.getBearerAutorizationToken = function (req) {
 };
 
 module.exports.hasGrantType = function hasGrantType(req, type) {
-    return req.body && req.body.hasOwnProperty('grant_type') && req.body.grant_type === type
-        || req.query && req.query.hasOwnProperty('grant_type') && req.query.grant_type === type;
+    return req.body && Object.prototype.hasOwnProperty.call(req.body, 'grant_type') && req.body.grant_type === type
+        || req.query && Object.prototype.hasOwnProperty.call(req.query, 'grant_type') && req.query.grant_type === type;
 };

@@ -1,16 +1,15 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
     sinon = require('sinon'),
     rewire = require('rewire'),
     common = require('../../../../server/lib/common'),
-    Models = require('../../../../server/models'),
-
-    sandbox = sinon.sandbox.create();
+    Models = require('../../../../server/models');
 
 describe('Models: listeners', function () {
     var eventsToRemember = {};
+    const emit = (event, data) => eventsToRemember[event](data);
 
     before(function () {
-        sandbox.stub(common.events, 'on').callsFake(function (name, callback) {
+        sinon.stub(common.events, 'on').callsFake(function (name, callback) {
             eventsToRemember[name] = callback;
         });
 
@@ -19,26 +18,24 @@ describe('Models: listeners', function () {
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
     });
 
     describe('on token added', function () {
-        it('calls User edit when event is emitted', function (done) {
-            var userModelSpy = sandbox.spy(Models.User, 'edit');
-
-            eventsToRemember['token.added']({
-                get: function () {
-                    return 1;
-                }
+        it('calls updateLastSeen on the user when the token.added event is emited', function (done) {
+            const userId = 1;
+            const user = Models.User.forge({id: 1});
+            sinon.stub(Models.User, 'findOne').withArgs({id: userId}).resolves(user);
+            const updateLastSeenSpy = sinon.stub(user, 'updateLastSeen').callsFake(function () {
+                updateLastSeenSpy.calledOnce.should.be.true();
+                done();
             });
 
-            userModelSpy.calledOnce.should.be.true();
-            userModelSpy.calledWith(
-                sinon.match.has('last_seen'),
-                sinon.match.has('id')
-            );
+            const fakeToken = {
+                get: sinon.stub().withArgs('user_id').returns(userId)
+            };
 
-            done();
+            emit('token.added', fakeToken);
         });
     });
 });

@@ -1,12 +1,9 @@
-/*globals describe, beforeEach, afterEach, it*/
 var should = require('should'),
     sinon = require('sinon'),
     path = require('path'),
     configUtils = require('../../../utils/configUtils'),
-    themes = require('../../../../server/services/themes'),
-    privateController = require('../../../../server/apps/private-blogging/lib/router'),
-
-    sandbox = sinon.sandbox.create();
+    themes = require('../../../../frontend/services/themes'),
+    privateController = require('../../../../frontend/apps/private-blogging/lib/router');
 
 describe('Private Controller', function () {
     var res, req, defaultPath, hasTemplateStub;
@@ -21,16 +18,16 @@ describe('Private Controller', function () {
     }
 
     beforeEach(function () {
-        hasTemplateStub = sandbox.stub().returns(false);
+        hasTemplateStub = sinon.stub().returns(false);
         hasTemplateStub.withArgs('index').returns(true);
 
-        sandbox.stub(themes, 'getActive').returns({
+        sinon.stub(themes, 'getActive').returns({
             hasTemplate: hasTemplateStub
         });
 
         res = {
             locals: {version: ''},
-            render: sandbox.spy()
+            render: sinon.spy()
         };
 
         req = {
@@ -39,7 +36,7 @@ describe('Private Controller', function () {
             params: {}
         };
 
-        defaultPath = path.join(configUtils.config.get('paths').appRoot, '/core/server/apps/private-blogging/lib/views/private.hbs');
+        defaultPath = path.join(configUtils.config.get('paths').appRoot, '/core/frontend/apps/private-blogging/lib/views/private.hbs');
 
         configUtils.set({
             theme: {
@@ -49,7 +46,7 @@ describe('Private Controller', function () {
     });
 
     afterEach(function () {
-        sandbox.restore();
+        sinon.restore();
         configUtils.restore();
     });
 

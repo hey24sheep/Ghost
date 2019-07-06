@@ -9,9 +9,7 @@ var should = require('should'),
     schedulingUtils = require('../../../../../server/adapters/scheduling/utils'),
     SchedulingDefault = require('../../../../../server/adapters/scheduling/SchedulingDefault'),
     postScheduling = require('../../../../../server/adapters/scheduling/post-scheduling'),
-    urlService = require('../../../../../server/services/url'),
-
-    sandbox = sinon.sandbox.create();
+    urlUtils = require('../../../../../server/lib/url-utils');
 
 describe('Scheduling: Post Scheduling', function () {
     var scope = {
@@ -35,29 +33,28 @@ describe('Scheduling: Post Scheduling', function () {
 
         scope.adapter = new SchedulingDefault();
 
-        sandbox.stub(api.schedules, 'getScheduledPosts').callsFake(function () {
+        sinon.stub(api.schedules, 'getScheduledPosts').callsFake(function () {
             return Promise.resolve({posts: scope.scheduledPosts});
         });
 
-        sandbox.stub(common.events, 'onMany').callsFake(function (events, stubDone) {
+        sinon.stub(common.events, 'onMany').callsFake(function (events, stubDone) {
             events.forEach(function (event) {
                 scope.events[event] = stubDone;
             });
         });
 
-        sandbox.stub(schedulingUtils, 'createAdapter').returns(Promise.resolve(scope.adapter));
+        sinon.stub(schedulingUtils, 'createAdapter').returns(Promise.resolve(scope.adapter));
 
-        sandbox.stub(models.Client, 'findOne').callsFake(function () {
+        sinon.stub(models.Client, 'findOne').callsFake(function () {
             return Promise.resolve(scope.client);
         });
 
-        sandbox.spy(scope.adapter, 'schedule');
-        sandbox.spy(scope.adapter, 'reschedule');
+        sinon.spy(scope.adapter, 'schedule');
+        sinon.spy(scope.adapter, 'reschedule');
     });
 
     afterEach(function () {
-        sandbox.restore();
-        return testUtils.teardown();
+        sinon.restore();
     });
 
     describe('fn:init', function () {
@@ -71,7 +68,7 @@ describe('Scheduling: Post Scheduling', function () {
 
                     scope.adapter.schedule.calledWith({
                         time: moment(scope.post.get('published_at')).valueOf(),
-                        url: urlService.utils.urlJoin(scope.apiUrl, 'schedules', 'posts', scope.post.get('id')) + '?client_id=' + scope.client.get('slug') + '&client_secret=' + scope.client.get('secret'),
+                        url: urlUtils.urlJoin(scope.apiUrl, 'schedules', 'posts', scope.post.get('id')) + '?client_id=' + scope.client.get('slug') + '&client_secret=' + scope.client.get('secret'),
                         extra: {
                             httpMethod: 'PUT',
                             oldTime: null

@@ -1,5 +1,3 @@
-'use strict';
-
 module.exports = {
     get blogIcon() {
         return require('./blog-icon');
@@ -15,5 +13,9 @@ module.exports = {
 
     get imageSizeCache() {
         return require('./cached-image-size-from-url');
+    },
+
+    get manipulator() {
+        return require('./manipulator');
     }
 };

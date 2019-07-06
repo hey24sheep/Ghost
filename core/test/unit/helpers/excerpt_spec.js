@@ -1,9 +1,20 @@
-var should = require('should'), // jshint ignore:line
+var should = require('should'),
 
 // Stuff we are testing
-    helpers = require('../../../server/helpers');
+    helpers = require('../../../frontend/helpers');
 
 describe('{{excerpt}} Helper', function () {
+    it('renders empty string when html and excerpt are null', function () {
+        var html = null,
+            rendered = helpers.excerpt.call({
+                html: html,
+                custom_excerpt: null
+            });
+
+        should.exist(rendered);
+        rendered.string.should.equal('');
+    });
+
     it('can render excerpt', function () {
         var html = 'Hello World',
             rendered = helpers.excerpt.call({
